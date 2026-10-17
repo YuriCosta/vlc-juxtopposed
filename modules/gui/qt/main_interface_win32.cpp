@@ -32,13 +32,22 @@
 #include "actions_manager.hpp"
 #include "dialogs_provider.hpp"
 #include "components/interface_widgets.hpp"
+#include "components/topbar.hpp"
 
 #include <QBitmap>
 
 #include <cassert>
 
 #include <QWindow>
+#include <QMargins>
+#include <QToolBar>
+#include <QTimer>
 #include <qpa/qplatformnativeinterface.h>
+
+#include <windowsx.h>
+
+/* Used by the Windows QPA plugin for the "WindowsCustomMargins" property */
+Q_DECLARE_METATYPE(QMargins)
 
 #define WM_APPCOMMAND 0x0319
 
@@ -83,6 +92,10 @@
 
 MainInterfaceWin32::MainInterfaceWin32( intf_thread_t *_p_intf )
     : MainInterface( _p_intf )
+    , b_customTitleBar( false )
+    , b_marginsApplied( false )
+    , i_captionHeight( 0 )
+    , i_frameWidth( 0 )
     , himl( NULL )
     , p_taskbl( NULL )
 {
@@ -92,6 +105,100 @@ MainInterfaceWin32::MainInterfaceWin32( intf_thread_t *_p_intf )
     if (taskbar_wmsg == 0)
         msg_Warn( p_intf, "Failed to register TaskbarButtonCreated message" );
     qApp->installNativeEventFilter(this);
+
+    setupCustomTitleBar();
+}
+
+/* Remove the native title bar while keeping the resize borders, the shadow,
+ * Aero Snap and the system menu: the client area is extended over the caption
+ * with Qt's custom margins and WM_NCHITTEST makes the top bar act as caption */
+void MainInterfaceWin32::setupCustomTitleBar()
+{
+    winId(); /* make sure the native window exists */
+    HWND hwnd = WinId( this );
+    if( !hwnd || !topBar )
+        return;
+
+    RECT frame = { 0, 0, 0, 0 };
+    AdjustWindowRectEx( &frame, WS_OVERLAPPEDWINDOW, FALSE,
+                        GetWindowLong( hwnd, GWL_EXSTYLE ) );
+    i_captionHeight = -frame.top;
+    i_frameWidth = frame.bottom;
+
+    b_customTitleBar = true;
+    topBar->setWindowButtonsVisible( true );
+    updateCustomTitleBar();
+}
+
+void MainInterfaceWin32::updateCustomTitleBar()
+{
+    applyCustomMargins( !( windowState() & Qt::WindowFullScreen ) );
+}
+
+/* Fullscreen windows have no frame: the margins would cut the video, and Qt
+ * would not even recognize the window as fullscreen (it compares the client
+ * area with the screen), so they are removed before going fullscreen */
+void MainInterfaceWin32::applyCustomMargins( bool b_on )
+{
+    if( !b_customTitleBar || !windowHandle() || !windowHandle()->handle() )
+        return;
+    if( b_marginsApplied == b_on )
+        return updateTopBarInset();
+    b_marginsApplied = b_on;
+
+    /* Qt resizes the window by the margin difference to keep its client
+     * area: put back the window rectangle, otherwise fullscreen overflows the
+     * screen and normal windows shrink a bit at each round trip */
+    HWND hwnd = WinId( this );
+    RECT before;
+    GetWindowRect( hwnd, &before );
+    if( b_on && IsZoomed( hwnd ) )
+    {
+        /* Maximized: the work area of the monitor, borders off screen
+         * (the current rectangle may still be the one of the transition) */
+        MONITORINFO info;
+        info.cbSize = sizeof( info );
+        if( GetMonitorInfo( MonitorFromWindow( hwnd, MONITOR_DEFAULTTONEAREST ), &info ) )
+        {
+            before = info.rcWork;
+            InflateRect( &before, i_frameWidth, i_frameWidth );
+        }
+    }
+    const QMargins margins = b_on ? QMargins( 0, -i_captionHeight, 0, 0 ) : QMargins();
+    QGuiApplication::platformNativeInterface()->setWindowProperty(
+        windowHandle()->handle(), QStringLiteral( "WindowsCustomMargins" ),
+        QVariant::fromValue( margins ) );
+    SetWindowPos( hwnd, NULL, before.left, before.top,
+                  before.right - before.left, before.bottom - before.top,
+                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED );
+    updateTopBarInset();
+}
+
+void MainInterfaceWin32::setInterfaceFullScreen( bool fs )
+{
+    if( fs )
+        applyCustomMargins( false );
+    MainInterface::setInterfaceFullScreen( fs );
+}
+
+void MainInterfaceWin32::updateTopBarInset()
+{
+    const bool b_fullscreen = windowState() & Qt::WindowFullScreen;
+
+    /* Maximized windows have their borders off screen, keep the bar visible */
+    const int inset = ( windowState() & Qt::WindowMaximized ) && !b_fullscreen ? i_frameWidth : 0;
+    topBar->setContentsMargins( 0, inset, 0, 0 );
+    topBar->setFixedHeight( 40 + inset );
+}
+
+void MainInterfaceWin32::changeEvent( QEvent *event )
+{
+    MainInterface::changeEvent( event );
+    /* Wait for Qt and the fullscreen/maximized logic to finish the transition
+     * (leaving fullscreen may chain a showMaximized()) before changing the
+     * frame, or the window gets stuck in between states */
+    if( event->type() == QEvent::WindowStateChange )
+        QTimer::singleShot( 0, this, [this]() { updateCustomTitleBar(); } );
 }
 
 MainInterfaceWin32::~MainInterfaceWin32()
@@ -233,6 +340,51 @@ bool MainInterfaceWin32::nativeEventFilter(const QByteArray &, void *message, lo
     short cmd;
     switch( msg->message )
     {
+        case WM_NCHITTEST:
+        {
+            const HWND mainHwnd = WinId( this );
+            if( !b_customTitleBar || isFullScreen() ||
+                ( msg->hwnd != mainHwnd && !IsChild( mainHwnd, msg->hwnd ) ) )
+                break;
+
+            const POINT pt = { GET_X_LPARAM( msg->lParam ), GET_Y_LPARAM( msg->lParam ) };
+            RECT wr;
+            GetWindowRect( mainHwnd, &wr );
+            const bool b_topEdge = !isMaximized() && pt.y < wr.top + i_frameWidth;
+            const bool b_caption = isTopBarVisible() &&
+                topBar->isCaptionArea( topBar->mapFromGlobal( QPoint( pt.x, pt.y ) ) );
+
+            /* Once a native child exists (queue panel, video), Qt makes its
+             * siblings native too, the top bar included: let those child
+             * windows forward the caption and top edge to the main window */
+            if( msg->hwnd != mainHwnd )
+            {
+                if( !b_topEdge && !b_caption )
+                    break;
+                *result = HTTRANSPARENT;
+                return true;
+            }
+
+            /* The top resize border is now part of the client area */
+            if( b_topEdge )
+            {
+                if( pt.x < wr.left + 2 * i_frameWidth )
+                    *result = HTTOPLEFT;
+                else if( pt.x >= wr.right - 2 * i_frameWidth )
+                    *result = HTTOPRIGHT;
+                else
+                    *result = HTTOP;
+                return true;
+            }
+
+            /* Empty parts of the top bar drag the window */
+            if( b_caption )
+            {
+                *result = HTCAPTION;
+                return true;
+            }
+            break;
+        }
         case WM_COMMAND:
             if (HIWORD(msg->wParam) == THBN_CLICKED)
             {

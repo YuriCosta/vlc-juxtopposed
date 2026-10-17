@@ -38,6 +38,9 @@
 
 #include "dialogs_provider.hpp"                     /* Opening Dialogs */
 #include "actions_manager.hpp"                             /* *_ACTION */
+#include "menus.hpp"                         /* Audio and subtitle menus */
+#include "main_interface.hpp"                       /* Queue panel */
+#include "components/overlay_panels.hpp"            /* Tracks and settings panels */
 
 #include "util/input_slider.hpp"                         /* SeekSlider */
 #include "util/customwidgets.hpp"                       /* qEventToKey */
@@ -46,6 +49,8 @@
 
 #include <QToolButton>
 #include <QHBoxLayout>
+#include <QMenu>
+#include <QCursor>
 #include <QRegion>
 #include <QSignalMapper>
 #include <QTimer>
@@ -107,8 +112,8 @@ void AbstractController::setupButton( QAbstractButton *aButton )
     sizePolicy.setVerticalStretch( 0 );
 
     aButton->setSizePolicy( sizePolicy );
-    aButton->setFixedSize( QSize( 26, 26 ) );
-    aButton->setIconSize( QSize( 20, 20 ) );
+    aButton->setFixedSize( QSize( 30, 30 ) );
+    aButton->setIconSize( QSize( 24, 24 ) );
     aButton->setFocusPolicy( Qt::NoFocus );
 }
 
@@ -197,13 +202,14 @@ void AbstractController::createAndAddWidget( QBoxLayout *controlLayout_,
             if( !buttonGroupLayout )
             {
                 buttonGroupLayout = new QHBoxLayout;
-
+                buttonGroupLayout->setContentsMargins( 0, 0, 0, 0 );
+                buttonGroupLayout->setSpacing( 8 );
             }
-            buttonGroupLayout->addWidget( widg );
+            buttonGroupLayout->addWidget( widg, 0, Qt::AlignVCenter );
         }
         else /* Special widgets */
         {
-            controlLayout_->addWidget( widg );
+            controlLayout_->addWidget( widg, 0, Qt::AlignVCenter );
         }
     }
 }
@@ -244,6 +250,7 @@ QWidget *AbstractController::createWidget( buttonType_e button, int options )
     case PLAY_BUTTON: {
         PlayButton *playButton = new PlayButton;
         setupButton( playButton );
+        playButton->setFixedSize( QSize( 54, 28 ) ); /* orange pill */
         BUTTON_SET_BAR(  playButton );
         connect( playButton, &PlayButton::clicked, toolbarActionsMapper, QOverload<>::of(&QSignalMapper::map) );
         toolbarActionsMapper->setMapping( playButton, PLAY_ACTION );
@@ -316,12 +323,70 @@ QWidget *AbstractController::createWidget( buttonType_e button, int options )
             NORMAL_BUTTON( FULLWIDTH );
         }
         break;
+    case AUDIO_TRACK_BUTTON: {
+        /* Audio tracks and output device, without going through the menubar */
+        QToolButton *audioButton = new QToolButton;
+        setupButton( audioButton );
+        audioButton->setProperty( "panelToggle", true );
+        BUTTON_SET_BAR( audioButton );
+        connect( audioButton, &QToolButton::clicked, this, [this]() {
+            if( p_intf->p_sys->p_mi )
+                p_intf->p_sys->p_mi->toggleTracksPanel( TracksPanel::TAB_AUDIO );
+        } );
+        widget = audioButton;
+        }
+        break;
+    case SUBTITLE_TRACK_BUTTON: {
+        QToolButton *subButton = new QToolButton;
+        setupButton( subButton );
+        subButton->setProperty( "panelToggle", true );
+        BUTTON_SET_BAR( subButton );
+        connect( subButton, &QToolButton::clicked, this, [this]() {
+            if( p_intf->p_sys->p_mi )
+                p_intf->p_sys->p_mi->toggleTracksPanel( TracksPanel::TAB_SUBTITLES );
+        } );
+        widget = subButton;
+        }
+        break;
     case EXTENDED_BUTTON:{
-        NORMAL_BUTTON( EXTENDED );
+        /* Redesign: the settings panel replaces the extended settings dialog */
+        QToolButton *settingsButton = new QToolButton;
+        setupButton( settingsButton );
+        settingsButton->setProperty( "panelToggle", true );
+        BUTTON_SET_BAR( settingsButton );
+        settingsButton->setCheckable( true );
+        connect( settingsButton, &QToolButton::clicked, this, [this, settingsButton]() {
+            MainInterface *mi = p_intf->p_sys->p_mi;
+            if( !mi )
+                return;
+            connect( mi, &MainInterface::settingsPanelVisibilityChanged,
+                     settingsButton, &QToolButton::setChecked, Qt::UniqueConnection );
+            mi->toggleSettingsPanel();
+        } );
+        widget = settingsButton;
         }
         break;
     case PLAYLIST_BUTTON:{
-        NORMAL_BUTTON( PLAYLIST );
+        /* Redesign: opens the floating queue instead of the docked playlist */
+        QToolButton *queueButton = new QToolButton;
+        queueButton->setObjectName( "queueButton" );
+        setupButton( queueButton );
+        queueButton->setProperty( "panelToggle", true );
+        queueButton->setCheckable( true );
+        queueButton->setToolTip( qtr( "Show the queue" ) );
+        QIcon queueIcon( iconL[PLAYLIST_BUTTON] );
+        queueIcon.addFile( ":/redesign/playlist-active.svg", QSize(), QIcon::Normal, QIcon::On );
+        queueButton->setIcon( queueIcon );
+        connect( queueButton, &QToolButton::clicked, this, [this, queueButton]() {
+            MainInterface *mi = p_intf->p_sys->p_mi;
+            if( !mi )
+                return;
+            connect( mi, &MainInterface::queuePanelVisibilityChanged,
+                     queueButton, &QToolButton::setChecked, Qt::UniqueConnection );
+            mi->toggleQueuePanel();
+            queueButton->setChecked( mi->isQueuePanelVisible() );
+        } );
+        widget = queueButton;
         }
         break;
     case SNAPSHOT_BUTTON:{
@@ -528,7 +593,8 @@ void AbstractController::applyAttributes( QToolButton *tmpButton, bool b_flat, b
     {
         if( b_flat )
             tmpButton->setAutoRaise( b_flat );
-        if( b_big )
+        /* The play button keeps its own size in the redesign */
+        if( b_big && !qobject_cast<PlayButton *>( tmpButton ) )
         {
             tmpButton->setFixedSize( QSize( 32, 32 ) );
             tmpButton->setIconSize( QSize( 26, 26 ) );
@@ -706,8 +772,9 @@ ControlsWidget::ControlsWidget( intf_thread_t *_p_i,
 #ifdef DEBUG_LAYOUT
     setStyleSheet( "background: red ");
 #endif
+    /* Redesign: 54px high bar, 20px side margins */
     controlLayout = new QVBoxLayout( this );
-    controlLayout->setContentsMargins( 3, 1, 0, 1 );
+    controlLayout->setContentsMargins( 20, 11, 20, 11 );
     controlLayout->setSpacing( 0 );
     QHBoxLayout *controlLayout1 = new QHBoxLayout;
     controlLayout1->setSpacing( 0 ); controlLayout1->setContentsMargins( 0, 0, 0, 0 );
@@ -717,13 +784,13 @@ ControlsWidget::ControlsWidget( intf_thread_t *_p_i,
     parseAndCreate( line1, controlLayout1 );
 
     QHBoxLayout *controlLayout2 = new QHBoxLayout;
-    controlLayout2->setSpacing( 0 ); controlLayout2->setContentsMargins( 0, 0, 0, 0 );
+    controlLayout2->setSpacing( 12 ); controlLayout2->setContentsMargins( 0, 0, 0, 0 );
     QString line2 = getSettings()->value( "MainWindow/MainToolbar2", MAIN_TB2_DEFAULT )
                                         .toString();
     parseAndCreate( line2, controlLayout2 );
 
     grip = new QSizeGrip( this );
-    controlLayout2->addWidget( grip, 0, Qt::AlignBottom|Qt::AlignRight );
+    grip->hide();
 
     if( !b_advancedVisible && advControls ) advControls->hide();
 
@@ -776,6 +843,11 @@ InputControlsWidget::InputControlsWidget( intf_thread_t *_p_i, QWidget *_parent 
     QString line = getSettings()->value( "MainWindow/InputToolbar", INPT_TB_DEFAULT ).toString();
     parseAndCreate( line, controlLayout );
 }
+
+bool InputControlsWidget::isEmpty() const
+{
+    return controlLayout->count() == 0;
+}
 /**********************************************************************
  * Fullscrenn control widget
  **********************************************************************/
@@ -803,18 +875,22 @@ FullscreenControllerWidget::FullscreenControllerWidget( intf_thread_t *_p_i, QWi
     setMinimumWidth( FSC_WIDTH );
     isWideFSC = false;
 
-    setFrameShape( QFrame::StyledPanel );
-    setFrameStyle( QFrame::Sunken );
+    /* Redesign: opaque bar, same metrics as the main control bar */
+    setFrameShape( QFrame::NoFrame );
     setSizePolicy( QSizePolicy::Minimum, QSizePolicy::Minimum );
 
     QVBoxLayout *controlLayout2 = new QVBoxLayout( this );
-    controlLayout2->setContentsMargins( 4, 6, 4, 2 );
+    controlLayout2->setContentsMargins( 20, 11, 20, 11 );
+    controlLayout2->setSpacing( 8 );
 
-    /* First line */
+    /* First line, only if the user configured one */
     InputControlsWidget *inputC = new InputControlsWidget( p_intf, this );
+    if( inputC->isEmpty() )
+        inputC->hide();
     controlLayout2->addWidget( inputC );
 
     controlLayout = new QHBoxLayout;
+    controlLayout->setSpacing( 12 );
     QString line = getSettings()->value( "MainWindow/FSCtoolbar", FSC_TB_DEFAULT ).toString();
     parseAndCreate( line, controlLayout );
     controlLayout2->addLayout( controlLayout );
@@ -822,7 +898,8 @@ FullscreenControllerWidget::FullscreenControllerWidget( intf_thread_t *_p_i, QWi
     /* hiding timer */
     p_hideTimer = new QTimer( this );
     p_hideTimer->setSingleShot( true );
-    connect( p_hideTimer, &QTimer::timeout, this, &FullscreenControllerWidget::hideFSC );
+    /* only the bottom bar, the top one has its own timer */
+    connect( p_hideTimer, &QTimer::timeout, this, &QWidget::hide );
 
     /* slow hiding timer */
 #if HAVE_TRANSPARENCY
@@ -841,7 +918,13 @@ FullscreenControllerWidget::FullscreenControllerWidget( intf_thread_t *_p_i, QWi
     /* First Move */
     previousPosition = getSettings()->value( "FullScreen/pos" ).toPoint();
     screenRes = getSettings()->value( "FullScreen/screen" ).toRect();
-    isWideFSC = getSettings()->value( "FullScreen/wide" ).toBool();
+    /* Redesign: always a full width bar at the bottom of the screen */
+    isWideFSC = true;
+
+    topBarWindow = NULL;
+    p_topHideTimer = new QTimer( this );
+    p_topHideTimer->setSingleShot( true );
+    connect( p_topHideTimer, &QTimer::timeout, this, &FullscreenControllerWidget::hideTopBar );
 
     connect( this, QOverload<bool>::of(&FullscreenControllerWidget::fullscreenChanged), THEMIM, &MainInputManager::changeFullscreen );
 
@@ -1049,24 +1132,17 @@ void FullscreenControllerWidget::customEvent( QEvent *event )
                     hideFSC();
             }
             break;
-        /* Event called to Show the FSC on mouseChanged() */
+        /* Event called on mouseChanged(): the bars follow the cursor */
         case IMEvent::FullscreenControlShow:
             vlc_mutex_lock( &lock );
             b_fs = b_fullscreen;
             vlc_mutex_unlock( &lock );
 
-            if( b_fs && ( isHidden()
-#if HAVE_TRANSPARENCY
-                 || p_slowHideTimer->isActive()
-#endif
-                    ) )
-                showFSC();
-
+            if( b_fs )
+                updateEdgeVisibility();
             break;
-        /* Start the timer to hide later, called usually with above case */
+        /* Hiding is driven by the cursor position, see updateEdgeVisibility() */
         case IMEvent::FullscreenControlPlanHide:
-            if( !b_mouse_over ) // Only if the mouse is not over FSC
-                planHideFSC();
             break;
         /* Hide */
         case IMEvent::FullscreenControlHide:
@@ -1081,6 +1157,14 @@ bool FullscreenControllerWidget::eventFilter( QObject *watched, QEvent *event )
 {
     const QWidget *wParent = parentWidget();
     Q_ASSERT( wParent );
+
+    if ( watched == topBarWindow )
+    {
+        if( event->type() == QEvent::Enter )
+            p_topHideTimer->stop();
+        else if( event->type() == QEvent::Leave )
+            updateEdgeVisibility();
+    }
 
     if ( watched == wParent && event->type() == QEvent::ActivationChange )
     {
@@ -1175,10 +1259,70 @@ void FullscreenControllerWidget::enterEvent( QEvent *event )
  */
 void FullscreenControllerWidget::leaveEvent( QEvent *event )
 {
-    planHideFSC();
-
     b_mouse_over = false;
+    updateEdgeVisibility();
     event->accept();
+}
+
+/* Figma/video: in fullscreen, the top and bottom bars are only shown while the
+ * mouse is near them, and disappear as soon as it moves away */
+#define FS_EDGE_ZONE   120 /* px from the screen edge */
+#define FS_HIDE_DELAY  300 /* ms, avoids flickering when crossing the edge */
+
+void FullscreenControllerWidget::updateEdgeVisibility()
+{
+    const int screen = targetScreen();
+    if( screen < 0 )
+        return;
+    const QRect scr = QGuiApplication::screens()[ screen ]->geometry();
+    const QPoint cursor = QCursor::pos();
+
+    const bool b_bottom = cursor.y() >= scr.bottom() - FS_EDGE_ZONE
+                       || ( isVisible() && geometry().contains( cursor ) );
+    if( b_bottom )
+    {
+        p_hideTimer->stop();
+        if( isHidden() )
+            showFSC();
+    }
+    else if( isVisible() && !p_hideTimer->isActive() )
+        p_hideTimer->start( FS_HIDE_DELAY );
+
+    if( !topBarWindow )
+        return;
+    const bool b_top = cursor.y() <= scr.top() + FS_EDGE_ZONE
+                    || ( topBarWindow->isVisible() && topBarWindow->geometry().contains( cursor ) );
+    if( b_top )
+    {
+        p_topHideTimer->stop();
+        if( topBarWindow->isHidden() )
+        {
+            topBarWindow->setGeometry( scr.x(), scr.y(), scr.width(), topBarWindow->sizeHint().height() );
+            topBarWindow->show();
+            topBarWindow->raise();
+        }
+    }
+    else if( topBarWindow->isVisible() && !p_topHideTimer->isActive() )
+        p_topHideTimer->start( FS_HIDE_DELAY );
+}
+
+void FullscreenControllerWidget::setTopBarWindow( QWidget *w )
+{
+    topBarWindow = w;
+    if( topBarWindow )
+        topBarWindow->installEventFilter( this );
+}
+
+void FullscreenControllerWidget::hideFSC()
+{
+    hide();
+    hideTopBar();
+}
+
+void FullscreenControllerWidget::hideTopBar()
+{
+    if( topBarWindow )
+        topBarWindow->hide();
 }
 
 /**

@@ -48,6 +48,12 @@ class VisualSelector;
 class ControlsWidget;
 class InputControlsWidget;
 class FullscreenControllerWidget;
+class TopBar;
+class QueuePanel;
+class TracksPanel;
+class SettingsPanel;
+class LibrarySidebar;
+class QToolBar;
 class QVBoxLayout;
 class QMenu;
 class QSize;
@@ -97,6 +103,7 @@ public:
     bool isPlDocked() { return ( b_plDocked != false ); }
     bool isInterfaceFullScreen() { return b_interfaceFullScreen; }
     bool isInterfaceAlwaysOnTop() { return b_interfaceOnTop; }
+    bool isQueuePanelVisible() const;
     StandardPLPanel* getPlaylistView();
 
 protected:
@@ -134,8 +141,14 @@ protected:
     /* */
     void displayNormalView();
     void setMinimalView( bool );
-    void setInterfaceFullScreen( bool );
+    virtual void setInterfaceFullScreen( bool );
     void computeMinimumSize();
+
+    /* Redesign: the top bar replaces the menubar (and the title bar on Windows) */
+    void createTopBar();
+    void setTopBarVisible( bool );
+    bool isTopBarVisible() const;
+    int  topBarHeight() const;
 
     /* */
     QSettings           *settings;
@@ -147,6 +160,20 @@ protected:
     ControlsWidget      *controls;
     InputControlsWidget *inputC;
     FullscreenControllerWidget *fullscreenControls;
+    TopBar              *topBar;
+    TopBar              *fsTopBar;  /* copy shown at the top of the screen in fullscreen */
+    QueuePanel          *queuePanel;
+    TracksPanel         *tracksPanel;
+    SettingsPanel       *settingsPanel;
+    void hideOverlayPanels( QWidget *except );
+    LibrarySidebar      *librarySidebar;
+    QWidget             *centerArea;
+    QWidget             *miniPlayer;
+    QLabel              *miniPlayerTitle;
+    bool                 b_libraryExpanded;
+    bool                 b_libraryWasVisible;   /* before going fullscreen */
+    void updateMiniPlayer();
+    QToolBar            *topBarDock;
 
     /* Widgets */
     QStackedWidget      *stackCentralW;
@@ -200,6 +227,12 @@ public slots:
     void dockPlaylist( bool b_docked = true );
     void toggleMinimalView( bool );
     void togglePlaylist();
+    void toggleQueuePanel();
+    void toggleTracksPanel( int tab );
+    void toggleSettingsPanel( int tab = -1 );
+    void toggleLibrarySidebar();
+    void setLibraryExpanded( bool );
+    void showLibraryForCurrentMedia();
     void toggleUpdateSystrayMenu(bool requestActivate = false);
     void showUpdateSystrayMenu();
     void hideUpdateSystrayMenu();
@@ -236,7 +269,8 @@ protected slots:
 
     void resizeStack( int w, int h )
     {
-        if( !isFullScreen() && !isMaximized() && !b_isWindowTiled )
+        /* The mini player of the expanded library must not resize the window */
+        if( !isFullScreen() && !isMaximized() && !b_isWindowTiled && !b_libraryExpanded )
         {
             if( b_minimalView )
                 resizeWindow( w, h ); /* Oh yes, it shouldn't
@@ -272,6 +306,9 @@ signals:
     void askHideMouse( bool );
     void askVideoOnTop( bool );
     void minimalViewToggled( bool );
+    void queuePanelVisibilityChanged( bool );
+    void tracksPanelVisibilityChanged( bool );
+    void settingsPanelVisibilityChanged( bool );
     void fullscreenInterfaceToggled( bool );
     void askToQuit();
     void askBoss();

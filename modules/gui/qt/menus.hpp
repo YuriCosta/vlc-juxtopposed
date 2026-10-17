@@ -67,6 +67,7 @@ class VLCMenuBar : public QObject
 {
     Q_OBJECT
     friend class MenuFunc;
+    friend class AbstractController; /* audio/subtitle track buttons */
 
 public:
     /* Main bar creation */

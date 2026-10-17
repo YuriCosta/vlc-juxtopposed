@@ -34,10 +34,16 @@
 #include <vlc_url.h>            /* vlc_uri_decode */
 #include <vlc_strings.h>        /* vlc_strfinput */
 #include <vlc_aout.h>           /* audio_output_t */
+#include <vlc_interface.h>      /* EXTENSIONS_MEDIA */
 
 #include <QApplication>
 #include <QFile>
 #include <QDir>
+#include <QCollator>
+#include <QFileInfo>
+
+#include <algorithm>
+#include <QUrl>
 #include <QSignalMapper>
 #include <QMessageBox>
 
@@ -1106,20 +1112,72 @@ void MainInputManager::stop()
    playlist_Stop( THEPL );
 }
 
+/* Media files of a folder, in the order of the library (numbers sorted
+ * naturally: E2 before E10) */
+QStringList MainInputManager::folderMedia( const QString &folder )
+{
+    QStringList files = QDir( folder ).entryList(
+        QString( EXTENSIONS_MEDIA ).split( ';', QString::SkipEmptyParts ),
+        QDir::Files | QDir::Readable );
+    QCollator collator;
+    collator.setNumericMode( true );
+    collator.setCaseSensitivity( Qt::CaseInsensitive );
+    std::sort( files.begin(), files.end(),
+               [&collator]( const QString &a, const QString &b ) { return collator.compare( a, b ) < 0; } );
+    return files;
+}
+
+/* Redesign: when the queue only holds the media that was opened (nobody built
+ * a playlist), next and previous move to the neighbour files of its folder */
+bool MainInputManager::playNeighbourInFolder( int direction )
+{
+    bool b_single;
+    {
+        vlc_playlist_locker pl_lock( THEPL );
+        playlist_item_t *root = THEPL->p_playing;
+        b_single = root && root->i_children == 1 && root->pp_children[0]->i_children < 0;
+    }
+    if( !b_single || !p_input )
+        return false;
+
+    input_item_t *p_item = input_GetItem( p_input );
+    char *psz_uri = p_item ? input_item_GetURI( p_item ) : NULL;
+    if( !psz_uri )
+        return false;
+    const QUrl url( qfu( psz_uri ) );
+    free( psz_uri );
+    if( !url.isLocalFile() )
+        return false;
+
+    const QFileInfo current( url.toLocalFile() );
+    const QStringList files = folderMedia( current.absolutePath() );
+    const int index = files.indexOf( current.fileName() );
+    const int target = index + direction;
+    if( index < 0 || target < 0 || target >= files.count() )
+        return false;
+
+    const QString path = QDir( current.absolutePath() ).filePath( files.at( target ) );
+    playlist_Clear( THEPL, pl_Unlocked );
+    Open::openMRL( p_intf, QUrl::fromLocalFile( path ).toString(), true, true );
+    return true;
+}
+
 void MainInputManager::next()
 {
-   playlist_Next( THEPL );
+    if( !playNeighbourInFolder( +1 ) )
+        playlist_Next( THEPL );
 }
 
 void MainInputManager::prev()
 {
-   playlist_Prev( THEPL );
+    if( !playNeighbourInFolder( -1 ) )
+        playlist_Prev( THEPL );
 }
 
 void MainInputManager::prevOrReset()
 {
     if( !p_input || var_GetInteger( p_input, "time") < INT64_C(10000) )
-        playlist_Prev( THEPL );
+        prev();
     else
         getIM()->sliderUpdate( 0.0 );
 }

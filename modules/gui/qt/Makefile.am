@@ -35,7 +35,7 @@ if HAVE_XCB
 libqt_plugin_la_CXXFLAGS += -DQT_HAS_XCB
 endif
 if HAVE_WIN32
-libqt_plugin_la_LIBADD += $(LIBCOM) -lcomctl32 -luuid
+libqt_plugin_la_LIBADD += $(LIBCOM) -lcomctl32 -luuid -lshell32
 endif
 if UPDATE_CHECK
 libqt_plugin_la_CPPFLAGS += -DUPDATE_CHECK
@@ -96,6 +96,10 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/components/interface_widgets.cpp \
 	gui/qt/components/interface_widgets.hpp \
 	gui/qt/components/controller.cpp gui/qt/components/controller.hpp \
+	gui/qt/components/topbar.cpp gui/qt/components/topbar.hpp \
+	gui/qt/components/queue_panel.cpp gui/qt/components/queue_panel.hpp \
+	gui/qt/components/overlay_panels.cpp gui/qt/components/overlay_panels.hpp \
+	gui/qt/components/library_sidebar.cpp gui/qt/components/library_sidebar.hpp \
 	gui/qt/components/controller_widget.cpp \
 	gui/qt/components/controller_widget.hpp \
 	gui/qt/components/epg/EPGChannels.cpp \
@@ -130,6 +134,8 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/components/sout/profiles.hpp \
 	gui/qt/util/animators.cpp gui/qt/util/animators.hpp \
 	gui/qt/util/input_slider.cpp gui/qt/util/input_slider.hpp \
+	gui/qt/util/redesign.cpp gui/qt/util/redesign.hpp \
+	gui/qt/util/thumbnailer.cpp gui/qt/util/thumbnailer.hpp \
 	gui/qt/util/timetooltip.cpp gui/qt/util/timetooltip.hpp \
 	gui/qt/util/customwidgets.cpp gui/qt/util/customwidgets.hpp \
 	gui/qt/util/searchlineedit.cpp gui/qt/util/searchlineedit.hpp \
@@ -209,6 +215,11 @@ nodist_libqt_plugin_la_SOURCES = \
 	gui/qt/components/open_panels.moc.cpp \
 	gui/qt/components/interface_widgets.moc.cpp \
 	gui/qt/components/controller.moc.cpp \
+	gui/qt/components/topbar.moc.cpp \
+	gui/qt/components/queue_panel.moc.cpp \
+	gui/qt/components/overlay_panels.moc.cpp \
+	gui/qt/components/library_sidebar.moc.cpp \
+	gui/qt/util/thumbnailer.moc.cpp \
 	gui/qt/components/controller_widget.moc.cpp \
 	gui/qt/components/epg/EPGChannels.moc.cpp \
 	gui/qt/components/epg/EPGProgram.moc.cpp \
@@ -419,6 +430,52 @@ libqt_plugin_la_RES = \
 	gui/qt/pixmaps/toolbar/volume-muted.svg \
 	gui/qt/pixmaps/toolbar/volume-slider-inside.svg \
 	gui/qt/pixmaps/toolbar/volume-slider-outside.svg \
+	gui/qt/pixmaps/redesign/audio.svg \
+	gui/qt/pixmaps/redesign/close.svg \
+	gui/qt/pixmaps/redesign/cone.svg \
+	gui/qt/pixmaps/redesign/folder.svg \
+	gui/qt/pixmaps/redesign/fullscreen.svg \
+	gui/qt/pixmaps/redesign/maximize.svg \
+	gui/qt/pixmaps/redesign/minimize.svg \
+	gui/qt/pixmaps/redesign/more.svg \
+	gui/qt/pixmaps/redesign/next.svg \
+	gui/qt/pixmaps/redesign/pause.svg \
+	gui/qt/pixmaps/redesign/pause-accent.svg \
+	gui/qt/pixmaps/redesign/play.svg \
+	gui/qt/pixmaps/redesign/play-accent.svg \
+	gui/qt/pixmaps/redesign/playlist.svg \
+	gui/qt/pixmaps/redesign/previous.svg \
+	gui/qt/pixmaps/redesign/settings.svg \
+	gui/qt/pixmaps/redesign/sidebar.svg \
+	gui/qt/pixmaps/redesign/subtitles.svg \
+	gui/qt/pixmaps/redesign/volume-high.svg \
+	gui/qt/pixmaps/redesign/volume-low.svg \
+	gui/qt/pixmaps/redesign/volume-medium.svg \
+	gui/qt/pixmaps/redesign/volume-muted.svg \
+	gui/qt/pixmaps/redesign/playlist-active.svg \
+	gui/qt/pixmaps/redesign/queue-add.svg \
+	gui/qt/pixmaps/redesign/queue-drag.svg \
+	gui/qt/pixmaps/redesign/queue-remove.svg \
+	gui/qt/pixmaps/redesign/queue-repeat.svg \
+	gui/qt/pixmaps/redesign/queue-shuffle.svg \
+	gui/qt/pixmaps/redesign/queue-sort.svg \
+	gui/qt/pixmaps/redesign/tab-bookmarks.svg \
+	gui/qt/pixmaps/redesign/tab-chapters.svg \
+	gui/qt/pixmaps/redesign/tab-queue.svg \
+	gui/qt/pixmaps/redesign/lib-home.svg \
+	gui/qt/pixmaps/redesign/lib-videos.svg \
+	gui/qt/pixmaps/redesign/lib-music.svg \
+	gui/qt/pixmaps/redesign/lib-network.svg \
+	gui/qt/pixmaps/redesign/lib-playlists.svg \
+	gui/qt/pixmaps/redesign/lib-recent.svg \
+	gui/qt/pixmaps/redesign/lib-add.svg \
+	gui/qt/pixmaps/redesign/lib-add-small.svg \
+	gui/qt/pixmaps/redesign/arrow-left.svg \
+	gui/qt/pixmaps/redesign/arrow-right.svg \
+	gui/qt/pixmaps/redesign/lib-more.svg \
+	gui/qt/pixmaps/redesign/lib-popout.svg \
+	gui/qt/pixmaps/redesign/lib-view.svg \
+	gui/qt/pixmaps/redesign/lib-search.svg \
 	gui/qt/pixmaps/types/capture-card_16px.svg \
 	gui/qt/pixmaps/types/disc_16px.svg \
 	gui/qt/pixmaps/types/file-asym_16px.svg \

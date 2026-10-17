@@ -277,6 +277,9 @@ public:
     bool hasEmptyPlaylist();
 
     void requestVoutUpdate() { return im->UpdateVout(); }
+
+    /* Media files of a folder, sorted like the library */
+    static QStringList folderMedia( const QString &folder );
     // Probe for initial input. Doing this from the constructor would cause
     // the getInstance to call itself recursively from the inputChangedHandler
     void probeCurrentInput();
@@ -286,6 +289,7 @@ protected:
 
 private:
     MainInputManager( intf_thread_t * );
+    bool playNeighbourInFolder( int direction );
     virtual ~MainInputManager();
 
     void customEvent( QEvent * ) override;

@@ -49,11 +49,11 @@ SoundWidget::SoundWidget( QWidget *_parent, intf_thread_t * _p_intf,
 {
     /* We need a layout for this widget */
     QHBoxLayout *layout = new QHBoxLayout( this );
-    layout->setSpacing( 0 ); layout->setContentsMargins( 0, 0, 0, 0 );
+    layout->setSpacing( 8 ); layout->setContentsMargins( 0, 0, 0, 0 );
 
     /* We need a Label for the pix */
     volMuteLabel = new QLabel;
-    volMuteLabel->setPixmap( ImageHelper::loadSvgToPixmap( ":/toolbar/volume-medium.svg", 16, 16 ) );
+    volMuteLabel->setPixmap( ImageHelper::loadSvgToPixmap( ":/toolbar/volume-medium.svg", 24, 24 ) );
 
     /* We might need a subLayout too */
     QVBoxLayout *subLayout;
@@ -67,7 +67,7 @@ SoundWidget::SoundWidget( QWidget *_parent, intf_thread_t * _p_intf,
         volumeControlWidget = NULL;
 
         /* And add the label */
-        layout->addWidget( volMuteLabel, 0, b_shiny? Qt::AlignBottom : Qt::AlignCenter );
+        layout->addWidget( volMuteLabel, 0, Qt::AlignCenter );
     }
     else
     {
@@ -108,7 +108,7 @@ SoundWidget::SoundWidget( QWidget *_parent, intf_thread_t * _p_intf,
     if( b_special )
         subLayout->addWidget( volumeSlider );
     else
-        layout->addWidget( volumeSlider, 0, b_shiny? Qt::AlignBottom : Qt::AlignCenter );
+        layout->addWidget( volumeSlider, 0, Qt::AlignCenter );
 
     /* Set the volume from the config */
     float volume = playlist_VolumeGet( THEPL );
@@ -132,7 +132,7 @@ void SoundWidget::refreshLabels()
 
     if( b_is_muted )
     {
-        volMuteLabel->setPixmap( ImageHelper::loadSvgToPixmap( psz_icon, 16, 16 ) );
+        volMuteLabel->setPixmap( ImageHelper::loadSvgToPixmap( psz_icon, 24, 24 ) );
         volMuteLabel->setToolTip(qfu(vlc_pgettext("Tooltip|Unmute", "Unmute")));
         return;
     }
@@ -144,7 +144,7 @@ void SoundWidget::refreshLabels()
     else
         psz_icon = ":/toolbar/volume-medium.svg";
 
-    volMuteLabel->setPixmap( ImageHelper::loadSvgToPixmap( psz_icon, 16, 16 ) );
+    volMuteLabel->setPixmap( ImageHelper::loadSvgToPixmap( psz_icon, 24, 24 ) );
     volMuteLabel->setToolTip( qfu(vlc_pgettext("Tooltip|Mute", "Mute")) );
 }
 
@@ -230,7 +230,8 @@ bool SoundWidget::eventFilter( QObject *obj, QEvent *e )
  **/
 void PlayButton::updateButtonIcons( bool b_playing )
 {
-    setIcon( b_playing ? QIcon( ":/toolbar/pause_b.svg" ) : QIcon( ":/toolbar/play_b.svg" ) );
+    /* Dark glyphs: the redesigned play button has an accent background */
+    setIcon( b_playing ? QIcon( ":/toolbar/pause_accent.svg" ) : QIcon( ":/toolbar/play_accent.svg" ) );
     setToolTip( b_playing ? qtr( "Pause the playback" )
                           : qtr( I_PLAY_TOOLTIP ) );
 }

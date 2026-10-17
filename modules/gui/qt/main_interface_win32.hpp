@@ -45,8 +45,20 @@ private:
 #endif
     virtual void toggleUpdateSystrayMenuWhenVisible(bool requestActivate = false) Q_DECL_OVERRIDE;
 
+    /* Redesign: the top bar replaces the native title bar */
+    void setupCustomTitleBar();
+    void updateCustomTitleBar();
+    void applyCustomMargins( bool b_on );
+    void updateTopBarInset();
+    bool b_customTitleBar;
+    bool b_marginsApplied;
+    int  i_captionHeight; /* native title bar + top border, in pixels */
+    int  i_frameWidth;    /* native resize border, in pixels */
+
 protected:
     virtual void resizeEvent( QResizeEvent *event ) Q_DECL_OVERRIDE;
+    virtual void changeEvent( QEvent * ) Q_DECL_OVERRIDE;
+    virtual void setInterfaceFullScreen( bool ) Q_DECL_OVERRIDE;
 
 private:
     HWND WinId( QWidget *);

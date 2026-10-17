@@ -35,10 +35,12 @@
 #include "input_manager.hpp"
 #include "imagehelper.hpp"
 #include "customwidgets.hpp"
+#include "util/redesign.hpp"
 #include <vlc_actions.h>
 
 #include <QPaintEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QBitmap>
 #include <QStyleOptionSlider>
 #include <QLinearGradient>
@@ -128,8 +130,10 @@ SeekSlider::SeekSlider( intf_thread_t *p_intf, Qt::Orientation q, QWidget *_pare
     setMinimumHeight( 18 );
     if( !b_classic )
     {
+        /* SeekStyle is kept for the geometry, painting is done in paintEvent */
         alternativeStyle = new SeekStyle;
         setStyle( alternativeStyle );
+        setMinimumHeight( 28 );
     }
 
     /* Init to 0 */
@@ -474,30 +478,52 @@ void SeekSlider::leaveEvent( QEvent * )
 
 void SeekSlider::paintEvent( QPaintEvent *ev )
 {
-    if ( alternativeStyle )
+    if ( !alternativeStyle )
     {
-        SeekStyle::SeekStyleOption option;
-        option.initFrom( this );
-        if ( QTime::currentTime() > bufferingStart.addSecs( 1 ) )
-            option.buffering = f_buffering;
-        else
-            option.buffering = 0.0;
-        option.length = inputLength;
-        option.animate = ( animHandle->state() == QAbstractAnimation::Running
-                           || hideHandleTimer->isActive() );
-        option.animationopacity = mHandleOpacity;
-        option.animationloading = mLoading;
-        option.sliderPosition = sliderPosition();
-        option.sliderValue = value();
-        option.maximum = maximum();
-        option.minimum = minimum();
-        if ( chapters ) foreach( const SeekPoint &point, chapters->getPoints() )
-            option.points << point.time;
-        QPainter painter( this );
-        style()->drawComplexControl( QStyle::CC_Slider, &option, &painter, this );
-    }
-    else
         QSlider::paintEvent( ev );
+        return;
+    }
+
+    /* Redesign: thick 28px track, filled elapsed part and a bar shaped handle */
+    QPainter painter( this );
+    painter.setRenderHint( QPainter::Antialiasing );
+    painter.setPen( Qt::NoPen );
+
+    const qreal trackHeight = qMin( height(), 28 );
+    const QRectF track( 0, ( height() - trackHeight ) / 2.0, width(), trackHeight );
+    painter.setBrush( Redesign::BgB2 );
+    painter.drawRoundedRect( track, 6, 6 );
+
+    if ( !isEnabled() || maximum() <= minimum() )
+        return;
+
+    const QRectF inner = track.adjusted( 2, 2, -2, -2 );
+    const qreal handleWidth = 8;
+    const qreal f_pos = qBound( 0.0, (qreal)( sliderPosition() - minimum() )
+                                     / ( maximum() - minimum() ), 1.0 );
+    const qreal right = inner.left() + handleWidth + f_pos * ( inner.width() - handleWidth );
+
+    /* Elapsed part */
+    painter.setBrush( Redesign::BgAccent );
+    painter.drawRoundedRect( QRectF( inner.left(), inner.top(),
+                                     right - inner.left(), inner.height() ), 4, 4 );
+
+    /* Chapters, as thin marks inside the track */
+    if ( chapters && inputLength > 0 )
+    {
+        painter.setBrush( Redesign::FgA4 );
+        foreach( const SeekPoint &point, chapters->getPoints() )
+        {
+            const qreal x = inner.left() + point.time / 1000000.0 / inputLength * inner.width();
+            painter.drawRect( QRectF( x - 1, inner.top() + inner.height() / 4,
+                                      2, inner.height() / 2 ) );
+        }
+    }
+
+    /* Handle */
+    painter.setBrush( Redesign::Accent );
+    painter.drawRoundedRect( QRectF( right - handleWidth, inner.top(),
+                                     handleWidth, inner.height() ), 4, 4 );
 }
 
 void SeekSlider::hideEvent( QHideEvent * )
@@ -607,10 +633,10 @@ void SeekSlider::startAnimLoading()
     - Mark Kretschmann
     - Gábor Lehel
    */
-#define WLENGTH   85  // px
-#define WHEIGHT   26  // px
-#define PADDINGL  6   // px
-#define PADDINGR  6   // px
+#define WLENGTH   88  // px
+#define WHEIGHT   28  // px
+#define PADDINGL  2   // px
+#define PADDINGR  2   // px
 #define SOUNDMIN  0   // %
 
 SoundSlider::SoundSlider( QWidget *_parent, float _i_step,
@@ -802,30 +828,80 @@ void SoundSlider::setMuted( bool m )
     update();
 }
 
+/* Cone shapes of the redesigned volume slider, from the Figma file:
+ * the track is 89x27.36, the colored fill 86x24.56, both pointing left */
+static QPainterPath volumeConePath( qreal w, qreal h, bool b_fill )
+{
+    const qreal vw = b_fill ? 86 : 89, vh = b_fill ? 24.56 : 27.3633;
+    const qreal sx = w / vw, sy = h / vh;
+    auto P = [sx, sy]( qreal x, qreal y ) { return QPointF( x * sx, y * sy ); };
+
+    QPainterPath path;
+    if( b_fill )
+    {
+        path.moveTo( P( 1.79183, 15.9675 ) );
+        path.cubicTo( P( 0.773415, 15.8609 ), P( 0, 15.0023 ), P( 0, 13.9783 ) );
+        path.lineTo( P( 0, 10.5816 ) );
+        path.cubicTo( P( 0, 9.55761 ), P( 0.773416, 8.69903 ), P( 1.79183, 8.59245 ) );
+        path.lineTo( P( 83.7918, 0.0110748 ) );
+        path.cubicTo( P( 84.9723, -0.112463 ), P( 86, 0.813294 ), P( 86, 2.00021 ) );
+        path.lineTo( P( 86, 22.5597 ) );
+        path.cubicTo( P( 86, 23.7467 ), P( 84.9723, 24.6724 ), P( 83.7918, 24.5489 ) );
+    }
+    else
+    {
+        path.moveTo( P( 3.59756, 19.0454 ) );
+        path.cubicTo( P( 1.55468, 18.8388 ), P( 0, 17.119 ), P( 0, 15.0657 ) );
+        path.lineTo( P( 0, 12.2975 ) );
+        path.cubicTo( P( 0, 10.2442 ), P( 1.55467, 8.52441 ), P( 3.59756, 8.31783 ) );
+        path.lineTo( P( 85.6982, 0.0155207 ) );
+        path.cubicTo( P( 87.4654, -0.163183 ), P( 89, 1.2241 ), P( 89, 3.0003 ) );
+        path.lineTo( P( 89, 24.363 ) );
+        path.cubicTo( P( 89, 26.1392 ), P( 87.4654, 27.5264 ), P( 85.6982, 27.3477 ) );
+    }
+    path.closeSubpath();
+    return path;
+}
+
 void SoundSlider::paintEvent( QPaintEvent *e )
 {
-    QPixmap *paintGradient;
-    if (b_isMuted)
-        paintGradient = &this->pixGradient2;
-    else
-        paintGradient = &this->pixGradient;
-
     painter.begin( this );
+    painter.setRenderHint( QPainter::Antialiasing );
+    painter.setPen( Qt::NoPen );
 
-    float f_scale = paintGradient->width() / float( width() );
-    const int offsetDst = int( ( ( width() - ( PADDINGR + PADDINGL ) ) * value() + 100 ) / maximum() ) + PADDINGL;
-    const int offsetSrc = int( ( ( paintGradient->width() - ( PADDINGR + PADDINGL ) * f_scale ) * value() + 100 ) / maximum() + PADDINGL * f_scale );
+    /* Track */
+    painter.setBrush( Redesign::BgB2 );
+    painter.drawPath( volumeConePath( width(), height(), false ) );
 
-    painter.drawPixmap( 0, 0, offsetDst, height(), *paintGradient, 0, 0, offsetSrc, paintGradient->height() );
-    painter.drawPixmap( 0, 0, width(), height(), pixOutside, 0, 0,  pixOutside.width(), pixOutside.height() );
+    /* Fill: green to red cone, clipped at the current volume */
+    const qreal margin = 1.5;
+    const qreal fillW = width() - 2 * margin, fillH = height() - 2 * margin;
+    QPainterPath fill = volumeConePath( fillW, fillH, true ).translated( margin, margin );
 
-    if (dark)
-        painter.setPen(Qt::white);
+    const qreal f_value = maximum() > minimum()
+        ? qBound( 0.0, (qreal)( value() - minimum() ) / ( maximum() - minimum() ), 1.0 )
+        : 0.0;
+    QPainterPath clip;
+    clip.addRect( QRectF( 0, 0, margin + f_value * fillW, height() ) );
+    fill = fill.intersected( clip );
+
+    QLinearGradient gradient( 0, 0, width(), 0 );
+    if( b_isMuted )
+    {
+        gradient.setColorAt( 0.0, Redesign::FgA4 );
+        gradient.setColorAt( 1.0, Redesign::FgA3 );
+    }
     else
-        painter.setPen(foreground);
-    painter.setFont( textfont );
-    painter.drawText( textrect, Qt::AlignRight | Qt::AlignVCenter,
-                      QString::number( value() ) + '%' );
+    {
+        gradient.setColorAt( 0.0,      QColor( 0x95, 0xD3, 0x18 ) );
+        gradient.setColorAt( 0.578809, QColor( 0xB2, 0xA9, 0x18 ) );
+        gradient.setColorAt( 0.792379, Redesign::Accent );
+        gradient.setColorAt( 1.0,      QColor( 0xFF, 0x37, 0x37 ) );
+    }
+    painter.setBrush( gradient );
+    painter.drawPath( fill );
+    painter.setBrush( QColor( 0, 0, 0, 51 ) ); /* 20% black, as in the design */
+    painter.drawPath( fill );
 
     painter.end();
     e->accept();

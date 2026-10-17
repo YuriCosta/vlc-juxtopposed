@@ -39,6 +39,11 @@
 
 #include "components/interface_widgets.hpp"     // bgWidget, videoWidget
 #include "components/controller.hpp"            // controllers
+#include "components/topbar.hpp"                // TopBar
+#include "components/queue_panel.hpp"           // QueuePanel
+#include "components/overlay_panels.hpp"        // TracksPanel, SettingsPanel
+#include "components/library_sidebar.hpp"       // LibrarySidebar
+#include "util/thumbnailer.hpp"                 // Thumbnailer::killInstance
 #include "components/playlist/playlist.hpp"     // plWidget
 #include "dialogs/firstrun.hpp"                 // First Run
 #include "dialogs/playlist.hpp"                 // PlaylistDialog
@@ -57,7 +62,11 @@
 #include <QWindow>
 #include <QMenu>
 #include <QMenuBar>
+#include <QToolBar>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QToolButton>
+#include <QFrame>
 #include <QStackedWidget>
 #include <QScreen>
 #ifdef _WIN32
@@ -107,6 +116,18 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
     cryptedLabel         = NULL;
     controls             = NULL;
     inputC               = NULL;
+    topBar               = NULL;
+    fsTopBar             = NULL;
+    queuePanel           = NULL;
+    tracksPanel          = NULL;
+    settingsPanel        = NULL;
+    librarySidebar       = NULL;
+    centerArea           = NULL;
+    miniPlayer           = NULL;
+    miniPlayerTitle      = NULL;
+    b_libraryExpanded    = false;
+    b_libraryWasVisible  = false;
+    topBarDock           = NULL;
 
     b_hideAfterCreation  = false; // --qt-start-minimized
     playlistVisible      = false;
@@ -165,6 +186,7 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
              THEDP, &DialogsProvider::destroyPopupMenu );
 
     createMainWidget( settings );
+    createTopBar();
 
 #ifndef QT_NO_STATUSBAR
     /**************
@@ -280,6 +302,9 @@ MainInterface::~MainInterface()
     /* Be sure to kill the actionsManager... Only used in the MI and control */
     ActionsManager::killInstance();
 
+    /* Stop the thumbnail worker thread before the module is unloaded */
+    Thumbnailer::killInstance();
+
     /* Delete the FSC controller */
     delete fullscreenControls;
 
@@ -315,7 +340,7 @@ MainInterface::~MainInterface()
 void MainInterface::computeMinimumSize()
 {
     int minWidth = 80;
-    if( menuBar()->isVisible() )
+    if( isTopBarVisible() )
         minWidth += controls->sizeHint().width();
 
     setMinimumWidth( minWidth );
@@ -333,6 +358,7 @@ void MainInterface::recreateToolbars()
 
     controls = new ControlsWidget( p_intf, b_adv, this );
     inputC = new InputControlsWidget( p_intf, this );
+    inputC->setVisible( !inputC->isEmpty() );
     mainLayout->insertWidget( 2, inputC );
     mainLayout->insertWidget( settings->value( "MainWindow/ToolbarPos", false ).toBool() ? 0: 3,
                               controls );
@@ -495,7 +521,40 @@ void MainInterface::createMainWidget( QSettings *creationSettings )
         videoWidget = new VideoWidget( p_intf, stackCentralW );
         stackCentralW->addWidget( videoWidget );
     }
-    mainLayout->insertWidget( 1, stackCentralW );
+    /* Redesign: the compact library sits on the left of the video */
+    centerArea = new QWidget( main );
+    QHBoxLayout *centerLayout = new QHBoxLayout( centerArea );
+    centerLayout->setContentsMargins( 0, 0, 0, 0 );
+    centerLayout->setSpacing( 0 );
+    librarySidebar = new LibrarySidebar( p_intf, centerArea );
+    centerLayout->addWidget( librarySidebar );
+    centerLayout->addWidget( stackCentralW, 1 );
+    mainLayout->insertWidget( 1, centerArea );
+    connect( librarySidebar, &LibrarySidebar::expandRequested,
+             this, &MainInterface::setLibraryExpanded );
+
+    /* Mini player of the expanded library (Figma "Miniplayer"): the video
+     * stack moves in there while the library takes the whole window */
+    miniPlayer = new QFrame( centerArea );
+    miniPlayer->setObjectName( "miniPlayer" );
+    QVBoxLayout *miniLayout = new QVBoxLayout( miniPlayer );
+    miniLayout->setContentsMargins( 8, 8, 8, 8 );
+    miniLayout->setSpacing( 8 );
+    QHBoxLayout *miniBar = new QHBoxLayout;
+    miniPlayerTitle = new QLabel;
+    miniPlayerTitle->setObjectName( "miniPlayerTitle" );
+    miniBar->addWidget( miniPlayerTitle, 1 );
+    QToolButton *backToPlayer = new QToolButton;
+    backToPlayer->setIcon( QIcon( ":/redesign/lib-popout.svg" ) );
+    backToPlayer->setIconSize( QSize( 24, 24 ) );
+    backToPlayer->setAutoRaise( true );
+    backToPlayer->setToolTip( qtr( "Back to the player" ) );
+    connect( backToPlayer, &QToolButton::clicked, this, [this]() { setLibraryExpanded( false ); } );
+    miniBar->addWidget( backToPlayer );
+    miniLayout->addLayout( miniBar );
+    miniPlayer->hide();
+    centerArea->installEventFilter( this );
+    connect( THEMIM, &MainInputManager::inputChanged, this, &MainInterface::updateMiniPlayer );
 
     stackWidgetsSizes[bgWidget] =
         creationSettings->value( "MainWindow/bgSize", QSize( 600, 0 ) ).toSize();
@@ -506,6 +565,8 @@ void MainInterface::createMainWidget( QSettings *creationSettings )
     controls = new ControlsWidget( p_intf,
         creationSettings->value( "MainWindow/adv-controls", false ).toBool(), this );
     inputC = new InputControlsWidget( p_intf, this );
+    /* The redesigned control bar already contains the seek bar */
+    inputC->setVisible( !inputC->isEmpty() );
 
     mainLayout->insertWidget( 2, inputC );
     mainLayout->insertWidget(
@@ -519,6 +580,26 @@ void MainInterface::createMainWidget( QSettings *creationSettings )
     visualSelector->hide();
     #endif
 
+
+    /* Redesign: the queue floats over the video, above the control bar */
+    queuePanel = new QueuePanel( p_intf, this, stackCentralW );
+    connect( queuePanel, &QueuePanel::visibilityChanged,
+             this, &MainInterface::queuePanelVisibilityChanged );
+    tracksPanel = new TracksPanel( p_intf, this, stackCentralW );
+    connect( tracksPanel, &TracksPanel::visibilityChanged,
+             this, &MainInterface::tracksPanelVisibilityChanged );
+    connect( tracksPanel, &TracksPanel::preferencesRequested,
+             this, [this]( int tab ) { toggleSettingsPanel( tab ); } );
+    settingsPanel = new SettingsPanel( p_intf, this, stackCentralW );
+    connect( settingsPanel, &SettingsPanel::visibilityChanged,
+             this, &MainInterface::settingsPanelVisibilityChanged );
+    /* Only one floating panel at a time */
+    connect( queuePanel, &QueuePanel::visibilityChanged, this,
+             [this]( bool b ) { if( b ) hideOverlayPanels( queuePanel ); } );
+    connect( tracksPanel, &TracksPanel::visibilityChanged, this,
+             [this]( bool b ) { if( b ) hideOverlayPanels( tracksPanel ); } );
+    connect( settingsPanel, &SettingsPanel::visibilityChanged, this,
+             [this]( bool b ) { if( b ) hideOverlayPanels( settingsPanel ); } );
 
     /* Enable the popup menu in the MI */
     main->setContextMenuPolicy( Qt::CustomContextMenu );
@@ -536,6 +617,190 @@ void MainInterface::createMainWidget( QSettings *creationSettings )
 
     if ( b_interfaceOnTop )
         setWindowFlags( windowFlags() | Qt::WindowStaysOnTopHint );
+}
+
+/* Keep the keyboard shortcuts of the hidden menubar working */
+static void addMenuShortcuts( QWidget *window, QMenu *menu )
+{
+    foreach( QAction *action, menu->actions() )
+    {
+        if( action->menu() )
+            addMenuShortcuts( window, action->menu() );
+        else if( !action->shortcut().isEmpty() )
+            window->addAction( action );
+    }
+}
+
+void MainInterface::createTopBar()
+{
+    topBar = new TopBar( p_intf, this, menuBar() );
+    topBar->setWindowButtonsVisible( false );
+
+    /* A fixed toolbar keeps the top bar above the central widget
+     * without touching the indexes of mainLayout */
+    topBarDock = new QToolBar( this );
+    topBarDock->setObjectName( "topBarDock" );
+    topBarDock->setMovable( false );
+    topBarDock->setFloatable( false );
+    topBarDock->setContextMenuPolicy( Qt::PreventContextMenu );
+    topBarDock->toggleViewAction()->setVisible( false );
+    topBarDock->layout()->setContentsMargins( 0, 0, 0, 0 );
+    topBarDock->layout()->setSpacing( 0 );
+    topBarDock->addWidget( topBar );
+    addToolBar( Qt::TopToolBarArea, topBarDock );
+
+    foreach( QAction *action, menuBar()->actions() )
+        if( action->menu() )
+            addMenuShortcuts( this, action->menu() );
+
+    /* Fullscreen: the same bar, revealed when the mouse reaches the top */
+    if( fullscreenControls )
+    {
+        QWidget *fsTopWindow = new QWidget( this, Qt::Tool | Qt::FramelessWindowHint );
+        fsTopWindow->setAttribute( Qt::WA_ShowWithoutActivating );
+        QVBoxLayout *fsTopLayout = new QVBoxLayout( fsTopWindow );
+        fsTopLayout->setContentsMargins( 0, 0, 0, 0 );
+        fsTopBar = new TopBar( p_intf, this, menuBar() );
+        fsTopBar->setWindowButtonsVisible( true );
+        fsTopLayout->addWidget( fsTopBar );
+        fullscreenControls->setTopBarWindow( fsTopWindow );
+    }
+    menuBar()->hide();
+
+    setVLCWindowsTitle( input_name );
+}
+
+void MainInterface::toggleLibrarySidebar()
+{
+    if( !librarySidebar )
+        return;
+    if( b_libraryExpanded )
+        setLibraryExpanded( false );
+    else if( librarySidebar->isVisible() )
+        librarySidebar->hide();
+    else
+        showLibraryForCurrentMedia();
+}
+
+void MainInterface::setLibraryExpanded( bool b_expand )
+{
+    if( !librarySidebar || !centerArea || b_expand == b_libraryExpanded )
+        return;
+    b_libraryExpanded = b_expand;
+    QHBoxLayout *centerLayout = static_cast<QHBoxLayout *>( centerArea->layout() );
+    QVBoxLayout *miniLayout = static_cast<QVBoxLayout *>( miniPlayer->layout() );
+
+    if( b_expand )
+    {
+        hideOverlayPanels( NULL );
+        librarySidebar->show();
+        librarySidebar->setExpanded( true );
+        centerLayout->removeWidget( stackCentralW );
+        centerLayout->setStretchFactor( librarySidebar, 1 );
+        stackCentralW->setParent( miniPlayer );
+        stackCentralW->setFixedSize( 359, 202 );
+        miniLayout->insertWidget( 0, stackCentralW );
+        stackCentralW->show();
+        updateMiniPlayer();
+    }
+    else
+    {
+        miniPlayer->hide();
+        miniLayout->removeWidget( stackCentralW );
+        stackCentralW->setParent( centerArea );
+        stackCentralW->setMinimumSize( 0, 0 );
+        stackCentralW->setMaximumSize( QWIDGETSIZE_MAX, QWIDGETSIZE_MAX );
+        centerLayout->setStretchFactor( librarySidebar, 0 );
+        centerLayout->addWidget( stackCentralW, 1 );
+        stackCentralW->show();
+        librarySidebar->setExpanded( false );
+    }
+}
+
+void MainInterface::updateMiniPlayer()
+{
+    if( !miniPlayer )
+        return;
+    const bool b_show = b_libraryExpanded && THEMIM->getInput() != NULL;
+    if( b_show )
+    {
+        miniPlayerTitle->setText( input_name.isEmpty() ? qtr( "VLC media player" ) : input_name );
+        miniPlayer->adjustSize();
+        miniPlayer->move( centerArea->width() - miniPlayer->width() - 6,
+                          centerArea->height() - miniPlayer->height() - 6 );
+        miniPlayer->raise();
+    }
+    miniPlayer->setVisible( b_show );
+}
+
+void MainInterface::showLibraryForCurrentMedia()
+{
+    if( !librarySidebar )
+        return;
+    librarySidebar->show();
+    librarySidebar->showCurrentMediaFolder();
+}
+
+void MainInterface::hideOverlayPanels( QWidget *except )
+{
+    foreach( QWidget *panel, QList<QWidget *>() << queuePanel << tracksPanel << settingsPanel )
+        if( panel && panel != except )
+            panel->hide();
+}
+
+void MainInterface::toggleTracksPanel( int tab )
+{
+    if( !tracksPanel )
+        return;
+    if( tracksPanel->isVisible() && tracksPanel->currentTab() == tab )
+        tracksPanel->hide();
+    else
+    {
+        tracksPanel->showTab( tab );
+        tracksPanel->show();
+    }
+}
+
+void MainInterface::toggleSettingsPanel( int tab )
+{
+    if( !settingsPanel )
+        return;
+    if( settingsPanel->isVisible() && ( tab < 0 || settingsPanel->currentTab() == tab ) )
+        settingsPanel->hide();
+    else
+    {
+        if( tab >= 0 )
+            settingsPanel->showTab( tab );
+        settingsPanel->show();
+    }
+}
+
+void MainInterface::toggleQueuePanel()
+{
+    if( queuePanel )
+        queuePanel->setVisible( !queuePanel->isVisible() );
+}
+
+bool MainInterface::isQueuePanelVisible() const
+{
+    return queuePanel && queuePanel->isVisible();
+}
+
+void MainInterface::setTopBarVisible( bool b_visible )
+{
+    menuBar()->setVisible( false );
+    if( topBarDock )
+        topBarDock->setVisible( b_visible );
+}
+
+bool MainInterface::isTopBarVisible() const
+{
+    return topBarDock && topBarDock->isVisible();
+}
+
+int MainInterface::topBarHeight() const
+{
+    return topBarDock ? topBarDock->height() : 0;
 }
 
 inline void MainInterface::initSystray()
@@ -846,8 +1111,8 @@ void MainInterface::setVideoSize( unsigned int w, unsigned int h )
                 h = screen.height();
                 if( !b_minimalView )
                 {
-                    if( menuBar()->isVisible() )
-                        h -= menuBar()->height();
+                    if( isTopBarVisible() )
+                        h -= topBarHeight();
                     if( controls->isVisible() )
                         h -= controls->height();
 #ifndef QT_NO_STATUSBAR
@@ -910,6 +1175,15 @@ void MainInterface::setVideoFullScreen( bool fs )
         if( playlistWidget != NULL && playlistWidget->artContainer->currentWidget() == videoWidget )
             showTab( videoWidget );
 
+        /* Redesign: only the video in fullscreen, the library comes back after */
+        if( librarySidebar )
+        {
+            b_libraryWasVisible = librarySidebar->isVisible();
+            setLibraryExpanded( false );
+            librarySidebar->hide();
+        }
+        hideOverlayPanels( NULL );
+
         /* we won't be able to get its windowed sized once in fullscreen, so update it now */
         stackWidgetsSizes[stackCentralW->currentWidget()] = stackCentralW->size();
 
@@ -921,6 +1195,8 @@ void MainInterface::setVideoFullScreen( bool fs )
     {
         setMinimalView( b_minimalView );
         setInterfaceFullScreen( b_interfaceFullScreen );
+        if( librarySidebar && b_libraryWasVisible )
+            librarySidebar->show();
         if( lastWinScreen != NULL )
             windowHandle()->setScreen(lastWinScreen);
         if( lastWinPosition.isNull() == false )
@@ -1128,7 +1404,7 @@ void MainInterface::dockPlaylist( bool p_docked )
  */
 void MainInterface::displayNormalView()
 {
-    menuBar()->setVisible( false );
+    setTopBarVisible( false );
     controls->setVisible( false );
 #ifndef QT_NO_STATUSBAR
     statusBar()->setVisible( false );
@@ -1142,7 +1418,7 @@ void MainInterface::displayNormalView()
  */
 void MainInterface::setMinimalView( bool b_minimal )
 {
-    bool b_menuBarVisible = menuBar()->isVisible();
+    bool b_menuBarVisible = isTopBarVisible();
     bool b_controlsVisible = controls->isVisible();
 #ifndef QT_NO_STATUSBAR
     bool b_statusBarVisible = statusBar()->isVisible();
@@ -1154,7 +1430,7 @@ void MainInterface::setMinimalView( bool b_minimal )
         int i_heightChange = 0;
 
         if( b_menuBarVisible )
-            i_heightChange += menuBar()->height();
+            i_heightChange += topBarHeight();
         if( b_controlsVisible )
             i_heightChange += controls->height();
 #ifndef QT_NO_STATUSBAR
@@ -1168,19 +1444,19 @@ void MainInterface::setMinimalView( bool b_minimal )
             resizeWindow( width(), height() - i_heightChange );
     }
 
-    menuBar()->setVisible( !b_minimal );
+    setTopBarVisible( !b_minimal );
     controls->setVisible( !b_minimal );
 #ifndef QT_NO_STATUSBAR
     statusBar()->setVisible( !b_minimal && b_statusbarVisible );
 #endif
-    inputC->setVisible( !b_minimal );
+    inputC->setVisible( !b_minimal && !inputC->isEmpty() );
 
     if( !isFullScreen() && !isMaximized() && !b_minimal && !b_isWindowTiled )
     {
         int i_heightChange = 0;
 
-        if( !b_menuBarVisible && menuBar()->isVisible() )
-            i_heightChange += menuBar()->height();
+        if( !b_menuBarVisible && isTopBarVisible() )
+            i_heightChange += topBarHeight();
         if( !b_controlsVisible && controls->isVisible() )
             i_heightChange += controls->height();
 #ifndef QT_NO_STATUSBAR
@@ -1290,6 +1566,11 @@ void MainInterface::setName( const QString& name )
  **/
 void MainInterface::setVLCWindowsTitle( const QString& aTitle )
 {
+    if( topBar )
+        topBar->setTitle( aTitle );
+    if( fsTopBar )
+        fsTopBar->setTitle( aTitle );
+
     if( aTitle.isEmpty() )
     {
         setWindowTitle( qtr( "VLC media player" ) );
@@ -1505,6 +1786,9 @@ void MainInterface::changeEvent(QEvent *event)
         Qt::WindowStates newState = windowState();
         Qt::WindowStates oldState = windowStateChangeEvent->oldState();
 
+        if( topBar )
+            topBar->updateMaximizeButton();
+
         /* b_maximizedView stores if the window was maximized before entering fullscreen.
          * It is set when entering maximized mode, unset when leaving it to normal mode.
          * Upon leaving full screen, if b_maximizedView is set,
@@ -1708,6 +1992,10 @@ void MainInterface::closeEvent( QCloseEvent *e )
 
 bool MainInterface::eventFilter( QObject *obj, QEvent *event )
 {
+    /* Keep the mini player in the bottom right corner of the library */
+    if( obj == centerArea && event->type() == QEvent::Resize )
+        updateMiniPlayer();
+
     if ( event->type() == MainInterface::ToolbarsNeedRebuild ) {
         event->accept();
         recreateToolbars();

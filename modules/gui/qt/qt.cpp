@@ -29,6 +29,7 @@
 #define VLC_MODULE_LICENSE VLC_LICENSE_GPL_2_PLUS
 
 #include <QApplication>
+#include <QStyleFactory>
 #include <QDate>
 #include <QMutex>
 
@@ -47,6 +48,7 @@
 #include "dialogs/help.hpp"     /* Launch Update */
 #include "recents.hpp"          /* Recents Item destruction */
 #include "util/qvlcapp.hpp"     /* QVLCApplication definition */
+#include "util/redesign.hpp"     /* Redesign colors and style sheet */
 #include "components/playlist/playlist_model.hpp" /* for ~PLModel() */
 
 #include <vlc_plugin.h>
@@ -244,7 +246,7 @@ vlc_module_begin ()
 
     add_float_with_range( "qt-opacity", 1., 0.1, 1., OPACITY_TEXT,
                           OPACITY_LONGTEXT, false )
-    add_float_with_range( "qt-fs-opacity", 0.8, 0.1, 1., OPACITY_FS_TEXT,
+    add_float_with_range( "qt-fs-opacity", 1., 0.1, 1., OPACITY_FS_TEXT,
                           OPACITY_FS_LONGTEXT, false )
 
     add_bool( "qt-video-autoresize", true, KEEPSIZE_TEXT,
@@ -260,7 +262,7 @@ vlc_module_begin ()
                 RECENTPLAY_FILTER_TEXT, RECENTPLAY_FILTER_LONGTEXT, false )
     add_integer( "qt-continue", 1, CONTINUE_PLAYBACK_TEXT, CONTINUE_PLAYBACK_TEXT, false )
             change_integer_list(i_continue_list, psz_continue_list_text )
-    add_bool( "qt-dark-palette", false, QT_DARK_TEXT,
+    add_bool( "qt-dark-palette", true, QT_DARK_TEXT,
                   QT_DARK_LONGTEXT, false )
 
 #ifdef UPDATE_CHECK
@@ -396,17 +398,14 @@ bool isDarkPaletteEnabled(intf_thread_t *p_intf) {
 
 void applyDarkPalette() {
     QPalette darkPalette;
-    static const QColor darkColor  (33, 33, 33);
-    static const QColor gray       (75,75,75);
-    static const QColor lightGray  (138, 138, 138);
-    static const QColor baseColor  (18, 18, 18);
-    static const QColor linkColor  (255, 168, 81);
+    static const QColor darkColor  = Redesign::BgA3;
+    static const QColor gray       = Redesign::FgA4;
+    static const QColor lightGray  = Redesign::FgA2;
+    static const QColor baseColor  = Redesign::BgB1;
+    static const QColor linkColor  = Redesign::Accent;
 
-#ifdef Q_OS_WIN
-    QColor accentColor = getWindowsAccentColor();
-#else
-    QColor accentColor (42, 130, 218);
-#endif
+    /* The redesign uses VLC's orange everywhere instead of the system accent */
+    QColor accentColor = Redesign::Accent;
 
     // Active group (the currently focused window)
     darkPalette.setColor(QPalette::Active, QPalette::Window,          darkColor);
@@ -684,7 +683,18 @@ static void *ThreadPlatform( void *obj, char *platform_name )
 
     // Apply dark palette only if dark palette is enabled
     if (isDarkPaletteEnabled(p_intf))
+    {
+        /* The native Windows style ignores the palette for headers, scrollbars
+         * and line edits (they stay white): Fusion follows it everywhere */
+        if (s_style.isEmpty())
+        {
+            QStyle *fusion = QStyleFactory::create( "Fusion" );
+            if (fusion)
+                QApplication::setStyle( fusion );
+        }
         applyDarkPalette();
+        app.setStyleSheet( Redesign::styleSheet() );
+    }
 
     /* Launch */
     app.exec();

@@ -34,11 +34,14 @@
 #include <QString>
 #include <QSizeGrip>
 
-#define MAIN_TB1_DEFAULT "64;39;64;38;65"
-#define MAIN_TB2_DEFAULT "0-2;64;3;1;4;64;7;9;64;10;20;19;64-4;37;65;35-4"
+/* Redesign: a single thin row
+ * [prev play next] [elapsed | seek bar | length] [volume] [audio subs settings playlist fullscreen] */
+#define MAIN_TB1_DEFAULT ""
+#define MAIN_TB2_DEFAULT "3;0;4;43;33-4;44;35-4;26;27;9;10;7"
 #define ADV_TB_DEFAULT "12;11;13;14"
-#define INPT_TB_DEFAULT "43;33-4;44"
-#define FSC_TB_DEFAULT "0-2;64;3;1;4;64;37;64;38;64;8;65;25;35-4;34"
+#define INPT_TB_DEFAULT ""
+/* Same row as the main bar, with "leave fullscreen" instead of "fullscreen" */
+#define FSC_TB_DEFAULT "3;0;4;43;33-4;44;35-4;26;27;9;10;8"
 
 #define I_PLAY_TOOLTIP N_("Play\nIf the playlist is empty, open a medium")
 
@@ -81,6 +84,8 @@ typedef enum buttonType_e
     NEXT_BUTTON,
     OPEN_SUB_BUTTON,
     FULLWIDTH_BUTTON,
+    AUDIO_TRACK_BUTTON,
+    SUBTITLE_TRACK_BUTTON,
     BUTTON_MAX,
 
     SPLITTER = 0x20,
@@ -110,7 +115,8 @@ static const char* const nameL[BUTTON_MAX] = { N_("Play"), N_("Stop"), N_("Open"
     N_("Record"), N_("A→B Loop"), N_("Frame By Frame"), N_("Trickplay Reverse"),
     N_("Step backward" ), N_("Step forward"), N_("Quit"), N_("Random"),
     N_("Loop / Repeat"), N_("Information"), N_("Previous"), N_("Next"),
-    N_("Open subtitles"), N_("Dock fullscreen controller")
+    N_("Open subtitles"), N_("Dock fullscreen controller"),
+    N_("Audio tracks"), N_("Subtitle tracks")
 };
 static const char* const tooltipL[BUTTON_MAX] = { I_PLAY_TOOLTIP,
     N_("Stop playback"), N_("Open a medium"),
@@ -125,6 +131,7 @@ static const char* const tooltipL[BUTTON_MAX] = { I_PLAY_TOOLTIP,
     N_("Previous media in the playlist"), N_("Next media in the playlist"),
     N_("Open subtitle file"),
     N_("Dock/undock fullscreen controller to/from bottom of screen"),
+    N_("Audio tracks and output device"), N_("Subtitle tracks"),
 };
 static const QString iconL[BUTTON_MAX] ={ ":/toolbar/play_b.svg", ":/toolbar/stop_b.svg",
     ":/toolbar/eject.svg", ":/toolbar/previous_b.svg", ":/toolbar/next_b.svg",
@@ -134,7 +141,8 @@ static const QString iconL[BUTTON_MAX] ={ ":/toolbar/play_b.svg", ":/toolbar/sto
     ":/toolbar/frame.svg", ":/toolbar/reverse.svg", ":/toolbar/skip_back.svg",
     ":/toolbar/skip_fw.svg", ":/toolbar/clear.svg", ":/buttons/playlist/shuffle_on.svg",
     ":/buttons/playlist/repeat_all.svg", ":/menu/info.svg",
-    ":/toolbar/previous_b.svg", ":/toolbar/next_b.svg", ":/toolbar/eject.svg", ":/toolbar/space.svg"
+    ":/toolbar/previous_b.svg", ":/toolbar/next_b.svg", ":/toolbar/eject.svg", ":/toolbar/space.svg",
+    ":/toolbar/audio_tracks.svg", ":/toolbar/subtitle_tracks.svg"
 };
 
 enum
@@ -200,6 +208,8 @@ class InputControlsWidget : public AbstractController
     Q_OBJECT
 public:
     InputControlsWidget( intf_thread_t * , QWidget *_parent = 0 );
+    /* The redesign merges this bar into the main one by default */
+    bool isEmpty() const;
 };
 
 /* Button Bar */
@@ -211,8 +221,9 @@ public:
     ControlsWidget( intf_thread_t *_p_i, bool b_advControls,
                     QWidget *_parent = 0 );
 
-    void setGripVisible( bool b_visible )
-    { grip->setVisible( b_visible ); }
+    /* The redesigned control bar never shows the size grip */
+    void setGripVisible( bool )
+    { grip->setVisible( false ); }
 
 protected:
     friend class MainInterface;
@@ -259,6 +270,8 @@ public:
     void updateFullwidthGeometry( int number );
     int targetScreen();
     void setTargetScreen( int );
+    /* Redesign: top bar shown when the mouse reaches the top of the screen */
+    void setTopBarWindow( QWidget * );
 
 private:
     static int FullscreenChanged( vlc_object_t *obj,
@@ -292,7 +305,9 @@ protected:
 private slots:
     void showFSC();
     void planHideFSC();
-    void hideFSC() { hide(); }
+    void hideFSC();
+    void hideTopBar();
+    void updateEdgeVisibility();
     void slowHideFSC();
     void restoreFSC();
     void centerFSC( int );
@@ -325,6 +340,9 @@ private:
 
     bool isWideFSC;
     int i_sensitivity;
+
+    QWidget *topBarWindow;
+    QTimer  *p_topHideTimer;
 };
 
 #endif
