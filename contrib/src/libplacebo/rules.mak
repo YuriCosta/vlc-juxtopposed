@@ -8,6 +8,7 @@ LIBPLACEBO_CFLAGS   := $(CFLAGS)
 LIBPLACEBO_CXXFLAGS := $(CXXFLAGS)
 ifdef HAVE_WIN32
 LIBPLACEBO_WIN32 = HAVE_WIN32=1
+DEPS_libplacebo += winpthreads $(DEPS_winpthreads)
 endif
 
 PKGS += libplacebo
