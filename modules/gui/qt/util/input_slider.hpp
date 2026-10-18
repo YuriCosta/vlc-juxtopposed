@@ -74,6 +74,7 @@ protected:
     void leaveEvent( QEvent * ) Q_DECL_OVERRIDE;
     void hideEvent( QHideEvent * ) Q_DECL_OVERRIDE;
     void paintEvent(QPaintEvent *ev) Q_DECL_OVERRIDE;
+    void updatePreview( float f_pos );
 
     bool eventFilter( QObject *obj, QEvent *event ) Q_DECL_OVERRIDE;
 
@@ -97,6 +98,8 @@ private:
     char psz_length[MSTRTIME_MAX_SIZE];               /* Used for the ToolTip */
     QTimer *seekLimitTimer;
     TimeTooltip *mTimeTooltip;
+    QString mPreviewMrl;     /* frame shown in the tooltip */
+    int64_t mPreviewTime;
     float f_buffering;
     QTime bufferingStart;
     SeekPoints* chapters;

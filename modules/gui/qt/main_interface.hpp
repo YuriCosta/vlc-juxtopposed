@@ -104,6 +104,7 @@ public:
     bool isInterfaceFullScreen() { return b_interfaceFullScreen; }
     bool isInterfaceAlwaysOnTop() { return b_interfaceOnTop; }
     bool isQueuePanelVisible() const;
+    bool isMinimalView() const { return b_minimalView; }
     StandardPLPanel* getPlaylistView();
 
 protected:
@@ -185,6 +186,8 @@ protected:
 
     /* resume panel */
     QWidget             *resumePanel;
+    QLabel              *resumeLabel;
+    void placeResumePanel();
     QTimer              *resumeTimer;
     int64_t             i_resumeTime;
 

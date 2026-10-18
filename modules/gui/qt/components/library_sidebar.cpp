@@ -26,6 +26,8 @@
 #include "recents.hpp"
 #include "util/redesign.hpp"
 #include "util/thumbnailer.hpp"
+#include "util/playlists.hpp"
+#include "dialogs/new_playlist.hpp"
 
 #include <vlc_input.h>
 #include <vlc_interface.h> /* EXTENSIONS_MEDIA */
@@ -42,6 +44,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollArea>
@@ -64,9 +67,15 @@
 
 #define MRL_ROLE      ( Qt::UserRole + 10 ) /* QFileSystemModel uses UserRole + 1..3 */
 #define FOLDER_ROLE   ( Qt::UserRole + 11 ) /* home page: item is a folder */
+#define PLAYLIST_ROLE ( Qt::UserRole + 12 ) /* playlists page: the playlist file */
+#define NEW_ROLE      ( Qt::UserRole + 13 ) /* playlists page: "New playlist" */
+#define ICON_ROLE     ( Qt::UserRole + 14 ) /* icon when there is no thumbnail */
+#define TRACK_ROLE    ( Qt::UserRole + 15 ) /* playlist page: index of the track */
 
-#define PAGE_RECENT   QStringLiteral( "recent:" )
-#define PAGE_HOME     QStringLiteral( "home:" )
+#define PAGE_RECENT    QStringLiteral( "recent:" )
+#define PAGE_HOME      QStringLiteral( "home:" )
+#define PAGE_PLAYLISTS QStringLiteral( "playlists:" )
+#define PAGE_PLAYLIST  QStringLiteral( "playlist:" ) /* followed by the file */
 
 enum
 {
@@ -129,6 +138,12 @@ private:
 
 namespace {
 
+bool isPage( const QString &location )
+{
+    return location == PAGE_RECENT || location == PAGE_HOME || location == PAGE_PLAYLISTS
+        || location.startsWith( PAGE_PLAYLIST );
+}
+
 QString currentMediaPath( intf_thread_t *p_intf )
 {
     QString path;
@@ -167,7 +182,8 @@ public:
         : QStyledItemDelegate( _view ), p_intf( _p_intf ), view( _view ) {}
 
     static void drawThumbnail( QPainter *painter, const QRect &rect, const QString &path,
-                               bool b_dir, bool b_audio, bool b_started, int radius )
+                               bool b_dir, bool b_audio, bool b_started, int radius,
+                               const QString &iconPath = QString() )
     {
         static const QIcon folderIcon( ":/redesign/folder.svg" );
         static const QIcon videoIcon( ":/redesign/lib-videos.svg" );
@@ -192,7 +208,8 @@ public:
             if( rect.height() > 32 )
                 painter->fillPath( clip, Redesign::BgA3 );
             const int s = qMin( 24, rect.height() );
-            const QIcon &icon = b_dir ? folderIcon : b_audio ? musicIcon : videoIcon;
+            const QIcon icon = !iconPath.isEmpty() ? QIcon( iconPath )
+                             : b_dir ? folderIcon : b_audio ? musicIcon : videoIcon;
             icon.paint( painter, QRect( rect.center().x() - s / 2 + 1, rect.center().y() - s / 2 + 1, s, s ) );
         }
         if( b_started )
@@ -220,10 +237,15 @@ public:
         const QString path = index.data( QFileSystemModel::FilePathRole ).toString();
         const QString mrl = index.data( MRL_ROLE ).toString();
         const QString target = !mrl.isEmpty() ? mrl : QUrl::fromLocalFile( path ).toString();
+        const QString iconPath = index.data( ICON_ROLE ).toString();
+        /* playlists show the thumbnail of their image or first track */
+        const bool b_playlist = !index.data( PLAYLIST_ROLE ).toString().isEmpty()
+                             || index.data( NEW_ROLE ).toBool();
         const bool b_dir = index.data( FOLDER_ROLE ).toBool()
-                        || ( mrl.isEmpty() && QFileInfo( path ).isDir() );
-        const bool b_current = !path.isEmpty() && QDir::cleanPath( path ) == currentMediaPath( p_intf );
-        const bool b_started = !b_dir && RecentsMRL::getInstance( p_intf )->time( target ) > 0;
+                        || ( mrl.isEmpty() && !b_playlist && QFileInfo( path ).isDir() );
+        const bool b_current = !b_playlist && !path.isEmpty()
+                            && QDir::cleanPath( path ) == currentMediaPath( p_intf );
+        const bool b_started = !b_dir && !b_playlist && RecentsMRL::getInstance( p_intf )->time( target ) > 0;
 
         QFont font = option.font;
         font.setPixelSize( 14 );
@@ -235,7 +257,7 @@ public:
         if( size == ITEM_LIST )
         {
             const QRect thumbRect( r.left() + 4, r.center().y() - 15, 32, 32 );
-            drawThumbnail( painter, thumbRect, path, b_dir, isAudioFile( name ), b_started, 2 );
+            drawThumbnail( painter, thumbRect, path, b_dir, isAudioFile( name ), b_started, 2, iconPath );
             const QRect textRect( r.left() + 46, r.top(), r.width() - 50, r.height() );
             painter->drawText( textRect, Qt::AlignVCenter | Qt::AlignLeft,
                                fm.elidedText( name, Qt::ElideMiddle, textRect.width() ) );
@@ -245,7 +267,7 @@ public:
             const QSize thumbSize = size == ITEM_LARGE ? QSize( 200, 112 ) : QSize( 96, 54 );
             const QRect thumbRect( r.center().x() - thumbSize.width() / 2, r.top() + 6,
                                    thumbSize.width(), thumbSize.height() );
-            drawThumbnail( painter, thumbRect, path, b_dir, isAudioFile( name ), b_started, 6 );
+            drawThumbnail( painter, thumbRect, path, b_dir, isAudioFile( name ), b_started, 6, iconPath );
             const QRect textRect( r.left() + 6, thumbRect.bottom() + 8, r.width() - 12, fm.height() );
             painter->drawText( textRect, Qt::AlignLeft | Qt::AlignVCenter,
                                fm.elidedText( name, Qt::ElideMiddle, textRect.width() ) );
@@ -413,8 +435,7 @@ LibrarySidebar::LibrarySidebar( intf_thread_t *_p_intf, QWidget *parent )
     addRailButton( SECTION_PLAYLISTS, ":/redesign/lib-playlists.svg", qtr( "Playlists" ) );
     addRailButton( SECTION_RECENT, ":/redesign/lib-recent.svg", qtr( "Recent" ) );
     addRailButton( SECTION_ADD, ":/redesign/lib-add.svg", qtr( "Add item" ) );
-    rail->button( SECTION_PLAYLISTS )->setEnabled( false );
-    rail->button( SECTION_PLAYLISTS )->setToolTip( qtr( "Playlists (not available yet)" ) );
+    rail->button( SECTION_PLAYLISTS )->setToolTip( qtr( "Playlists you saved" ) );
     rail->button( SECTION_HOME )->setToolTip( qtr( "Home: recent media and folders" ) );
     rail->button( SECTION_ADD )->setToolTip( qtr( "Browse another folder" ) );
     foreach( QAbstractButton *b, rail->buttons() )
@@ -493,6 +514,7 @@ LibrarySidebar::LibrarySidebar( intf_thread_t *_p_intf, QWidget *parent )
     proxy->setDynamicSortFilter( true );
     proxy->sort( 0, Qt::AscendingOrder );
     recentModel = new QStandardItemModel( this );
+    playlistModel = new QStandardItemModel( this );
 
     view = new QListView;
     view->setObjectName( "libraryView" );
@@ -623,6 +645,9 @@ void LibrarySidebar::selectSection( int id )
     case SECTION_NETWORK:
         THEDP->openNetDialog();
         break;
+    case SECTION_PLAYLISTS:
+        showPlaylists();
+        break;
     case SECTION_RECENT:
         showRecent();
         break;
@@ -657,6 +682,10 @@ void LibrarySidebar::openLocation( const QString &where )
         showRecent();
     else if( where == PAGE_HOME )
         showHome();
+    else if( where == PAGE_PLAYLISTS )
+        showPlaylists();
+    else if( where.startsWith( PAGE_PLAYLIST ) )
+        showPlaylist( where.mid( PAGE_PLAYLIST.length() ) );
     else
         showFolder( where, false );
 }
@@ -748,7 +777,7 @@ void LibrarySidebar::goBack()
     const QString target = backHistory.takeLast();
     const QStringList forward = forwardHistory;
     currentPage = target; /* avoid recording the jump */
-    if( target != PAGE_RECENT && target != PAGE_HOME )
+    if( !isPage( target ) )
         currentPage.clear(), currentPath = target;
     openLocation( target );
     forwardHistory = forward;
@@ -763,7 +792,7 @@ void LibrarySidebar::goForward()
     const QStringList forward = forwardHistory;
     backHistory << location();
     currentPage = target;
-    if( target != PAGE_RECENT && target != PAGE_HOME )
+    if( !isPage( target ) )
         currentPage.clear(), currentPath = target;
     openLocation( target );
     forwardHistory = forward;
@@ -794,14 +823,21 @@ void LibrarySidebar::updateBreadcrumb()
     auto addCrumb = [this]( const QString &text, const QString &target ) {
         QToolButton *crumb = new QToolButton;
         crumb->setObjectName( "breadcrumb" );
-        crumb->setText( text );
+        /* long names end with "…" instead of losing their start */
+        crumb->ensurePolished();
+        crumb->setText( crumb->fontMetrics().elidedText( text, Qt::ElideRight, b_expanded ? 260 : 130 ) );
         crumb->setToolTip( target.isEmpty() ? text : QDir::toNativeSeparators( target ) );
         crumb->setFocusPolicy( Qt::NoFocus );
         crumb->setAutoRaise( true );
         if( target.isEmpty() || target == location() )
             crumb->setEnabled( false );
         else
-            connect( crumb, &QToolButton::clicked, this, [this, target]() { showFolder( target ); } );
+            connect( crumb, &QToolButton::clicked, this, [this, target]() {
+                if( isPage( target ) )
+                    openLocation( target );
+                else
+                    showFolder( target );
+            } );
         breadcrumbLayout->addWidget( crumb );
     };
 
@@ -809,6 +845,14 @@ void LibrarySidebar::updateBreadcrumb()
         addCrumb( qtr( "Recent" ), QString() );
     else if( currentPage == PAGE_HOME )
         addCrumb( qtr( "Home" ), QString() );
+    else if( currentPage == PAGE_PLAYLISTS )
+        addCrumb( qtr( "Playlists" ), QString() );
+    else if( currentPage.startsWith( PAGE_PLAYLIST ) )
+    {
+        addCrumb( qtr( "Playlists" ), PAGE_PLAYLISTS );
+        addSeparator();
+        addCrumb( Playlists::read( currentPage.mid( PAGE_PLAYLIST.length() ) ).title, QString() );
+    }
     else
     {
         QStringList levels;
@@ -846,7 +890,10 @@ void LibrarySidebar::updateCount()
         return;
     }
     const int count = view->model() ? view->model()->rowCount( view->rootIndex() ) : 0;
-    countLabel->setText( count == 1 ? qtr( "1 item" ) : qtr( "%1 items" ).arg( count ) );
+    if( currentPage == PAGE_PLAYLISTS )
+        countLabel->setText( count - 1 == 1 ? qtr( "1 playlist" ) : qtr( "%1 playlists" ).arg( count - 1 ) );
+    else
+        countLabel->setText( count == 1 ? qtr( "1 item" ) : qtr( "%1 items" ).arg( count ) );
 }
 
 QString LibrarySidebar::pathFor( const QModelIndex &index ) const
@@ -854,16 +901,154 @@ QString LibrarySidebar::pathFor( const QModelIndex &index ) const
     return index.data( QFileSystemModel::FilePathRole ).toString();
 }
 
-void LibrarySidebar::enqueue( const QModelIndex &index, bool b_play )
+QString LibrarySidebar::urlFor( const QModelIndex &index ) const
 {
     const QString mrl = index.data( MRL_ROLE ).toString();
-    const QString path = pathFor( index );
-    Open::openMRL( p_intf, !mrl.isEmpty() ? mrl : QUrl::fromLocalFile( path ).toString(),
-                   b_play, true );
+    return !mrl.isEmpty() ? mrl : QUrl::fromLocalFile( pathFor( index ) ).toString();
+}
+
+void LibrarySidebar::enqueue( const QModelIndex &index, bool b_play )
+{
+    const QString playlist = index.data( PLAYLIST_ROLE ).toString();
+    if( !playlist.isEmpty() )
+    {
+        const QStringList tracks = Playlists::read( playlist ).tracks;
+        for( int i = 0; i < tracks.count(); i++ )
+            Open::openMRL( p_intf, tracks.at( i ), b_play && i == 0, true );
+        return;
+    }
+    Open::openMRL( p_intf, urlFor( index ), b_play, true );
+}
+
+/* Plays the first one, the others go to the queue after it */
+void LibrarySidebar::playAll( const QStringList &urls )
+{
+    for( int i = 0; i < urls.count(); i++ )
+        Open::openMRL( p_intf, urls.at( i ), i == 0, true );
+}
+
+/* "Add to playlist" > [New playlist...] [each saved playlist] */
+void LibrarySidebar::addPlaylistMenu( QMenu *menu, const QStringList &urls )
+{
+    QMenu *submenu = menu->addMenu( QIcon( ":/redesign/lib-playlists.svg" ), qtr( "Add to playlist" ) );
+    submenu->addAction( QIcon( ":/redesign/lib-add-small.svg" ), qtr( "New playlist..." ), this, [this, urls]() {
+        if( !NewPlaylistDialog::create( p_intf, window(), urls ).isEmpty() )
+            refreshPlaylistPage();
+    } );
+    const QStringList playlists = Playlists::list( p_intf );
+    if( !playlists.isEmpty() )
+        submenu->addSeparator();
+    foreach( const QString &file, playlists )
+        submenu->addAction( Playlists::read( file ).title, this, [this, file, urls]() {
+            Playlists::append( file, urls );
+            refreshPlaylistPage();
+        } );
+}
+
+/* The playlist pages show what is on disk: reload them without a history step */
+void LibrarySidebar::refreshPlaylistPage()
+{
+    const QString page = currentPage;
+    if( page != PAGE_PLAYLISTS && !page.startsWith( PAGE_PLAYLIST ) )
+        return;
+    const QStringList back = backHistory, forward = forwardHistory;
+    openLocation( page );
+    backHistory = back;
+    forwardHistory = forward;
+    updateHistoryButtons();
+}
+
+/* Figma "Playlists": [+ New playlist] then one card per saved playlist */
+void LibrarySidebar::showPlaylists()
+{
+    if( location() != PAGE_PLAYLISTS )
+        pushHistory();
+    currentPage = PAGE_PLAYLISTS;
+
+    playlistModel->clear();
+    QStandardItem *create = new QStandardItem( qtr( "New playlist" ) );
+    create->setData( true, NEW_ROLE );
+    create->setData( ":/redesign/lib-add-small.svg", ICON_ROLE );
+    create->setToolTip( qtr( "Create a playlist" ) );
+    create->setEditable( false );
+    playlistModel->appendRow( create );
+    foreach( const QString &file, Playlists::list( p_intf ) )
+    {
+        const Playlists::Info info = Playlists::read( file );
+        QString thumb = info.image;
+        if( thumb.isEmpty() || !QFileInfo( thumb ).exists() )
+        {
+            thumb.clear();
+            foreach( const QString &track, info.tracks )
+                if( QUrl( track ).isLocalFile() && QFileInfo( QUrl( track ).toLocalFile() ).isFile() )
+                {
+                    thumb = QUrl( track ).toLocalFile();
+                    break;
+                }
+        }
+        QStandardItem *item = new QStandardItem( info.title );
+        item->setData( file, PLAYLIST_ROLE );
+        item->setData( thumb, QFileSystemModel::FilePathRole );
+        item->setData( ":/redesign/lib-playlists.svg", ICON_ROLE );
+        item->setToolTip( info.tracks.count() == 1 ? qtr( "%1 (1 item)" ).arg( info.title )
+                                                   : qtr( "%1 (%2 items)" ).arg( info.title ).arg( info.tracks.count() ) );
+        item->setEditable( false );
+        playlistModel->appendRow( item );
+    }
+    view->setModel( playlistModel );
+    view->setRootIndex( QModelIndex() );
+    pages->setCurrentWidget( view );
+
+    updateBreadcrumb();
+    updateHistoryButtons();
+    updateCount();
+}
+
+/* The tracks of one playlist */
+void LibrarySidebar::showPlaylist( const QString &file )
+{
+    const QString page = PAGE_PLAYLIST + file;
+    if( location() != page )
+        pushHistory();
+    currentPage = page;
+
+    recentModel->clear();
+    const QStringList tracks = Playlists::read( file ).tracks;
+    for( int i = 0; i < tracks.count(); i++ )
+    {
+        const QUrl url( tracks.at( i ) );
+        const QString name = url.isLocalFile() ? QFileInfo( url.toLocalFile() ).fileName() : tracks.at( i );
+        QStandardItem *item = new QStandardItem( name );
+        item->setData( tracks.at( i ), MRL_ROLE );
+        item->setData( url.isLocalFile() ? url.toLocalFile() : QString(), QFileSystemModel::FilePathRole );
+        item->setData( i, TRACK_ROLE );
+        item->setToolTip( url.isLocalFile() ? QDir::toNativeSeparators( url.toLocalFile() ) : tracks.at( i ) );
+        item->setEditable( false );
+        recentModel->appendRow( item );
+    }
+    view->setModel( recentModel );
+    view->setRootIndex( QModelIndex() );
+    pages->setCurrentWidget( view );
+
+    updateBreadcrumb();
+    updateHistoryButtons();
+    updateCount();
 }
 
 void LibrarySidebar::activate( const QModelIndex &index )
 {
+    if( index.data( NEW_ROLE ).toBool() )
+    {
+        if( !NewPlaylistDialog::create( p_intf, window() ).isEmpty() )
+            refreshPlaylistPage();
+        return;
+    }
+    const QString playlist = index.data( PLAYLIST_ROLE ).toString();
+    if( !playlist.isEmpty() )
+    {
+        showPlaylist( playlist );
+        return;
+    }
     const QString path = pathFor( index );
     if( index.data( MRL_ROLE ).toString().isEmpty() && QFileInfo( path ).isDir() )
         showFolder( path );
@@ -877,9 +1062,43 @@ void LibrarySidebar::showContextMenu( const QPoint &pos )
     const QModelIndex index = view->indexAt( pos );
     QMenu menu( this );
     const bool b_folderPage = currentPage.isEmpty();
+    const QString playlistFile = currentPage.startsWith( PAGE_PLAYLIST )
+                               ? currentPage.mid( PAGE_PLAYLIST.length() ) : QString();
+    if( currentPage == PAGE_PLAYLISTS )
+    {
+        if( index.isValid() && !index.data( NEW_ROLE ).toBool() )
+        {
+            const QString file = index.data( PLAYLIST_ROLE ).toString();
+            menu.addAction( qtr( "Play" ), this, [=]() { enqueue( index, true ); } );
+            menu.addAction( qtr( "Add to the queue" ), this, [=]() { enqueue( index, false ); } );
+            menu.addAction( qtr( "Open" ), this, [=]() { showPlaylist( file ); } );
+            menu.addSeparator();
+            menu.addAction( qtr( "Delete the playlist" ), this, [=]() {
+                if( QMessageBox::question( window(), qtr( "Delete the playlist" ),
+                        qtr( "Delete the playlist \"%1\"? The media files are kept." )
+                            .arg( Playlists::read( file ).title ) ) == QMessageBox::Yes )
+                {
+                    Playlists::remove( file );
+                    refreshPlaylistPage();
+                }
+            } );
+        }
+        else
+            menu.addAction( qtr( "New playlist..." ), this, [this]() {
+                if( !NewPlaylistDialog::create( p_intf, window() ).isEmpty() )
+                    refreshPlaylistPage();
+            } );
+        menu.exec( view->viewport()->mapToGlobal( pos ) );
+        return;
+    }
     if( index.isValid() )
     {
         const QModelIndexList selection = view->selectionModel()->selectedIndexes();
+        /* media only: folders can not go in a playlist */
+        QStringList urls;
+        foreach( const QModelIndex &i, selection.isEmpty() ? QModelIndexList() << index : selection )
+            if( !i.data( FOLDER_ROLE ).toBool() && !QFileInfo( pathFor( i ) ).isDir() )
+                urls << urlFor( i );
         menu.addAction( qtr( "Play" ), this, [=]() { enqueue( index, true ); } );
         menu.addAction( qtr( "Add to the queue" ), this, [=]() {
             foreach( const QModelIndex &i, selection.isEmpty() ? QModelIndexList() << index : selection )
@@ -898,6 +1117,24 @@ void LibrarySidebar::showContextMenu( const QPoint &pos )
                 }
             } );
         }
+        if( !playlistFile.isEmpty() )
+        {
+            menu.addAction( qtr( "Play from here" ), this, [=]() {
+                const QStringList tracks = Playlists::read( playlistFile ).tracks;
+                playAll( tracks.mid( index.data( TRACK_ROLE ).toInt() ) );
+            } );
+            menu.addAction( qtr( "Remove from the playlist" ), this, [=]() {
+                QList<int> rows;
+                foreach( const QModelIndex &i, selection.isEmpty() ? QModelIndexList() << index : selection )
+                    rows << i.data( TRACK_ROLE ).toInt();
+                std::sort( rows.begin(), rows.end(), std::greater<int>() );
+                foreach( int row, rows )
+                    Playlists::removeTrack( playlistFile, row );
+                refreshPlaylistPage();
+            } );
+        }
+        else if( !urls.isEmpty() )
+            addPlaylistMenu( &menu, urls );
         menu.addSeparator();
     }
     if( b_folderPage )
@@ -911,6 +1148,28 @@ void LibrarySidebar::showContextMenu( const QPoint &pos )
 void LibrarySidebar::showMoreMenu()
 {
     QMenu menu( this );
+    if( currentPage == PAGE_PLAYLISTS )
+        menu.addAction( qtr( "New playlist..." ), this, [this]() {
+            if( !NewPlaylistDialog::create( p_intf, window() ).isEmpty() )
+                refreshPlaylistPage();
+        } );
+    else if( currentPage.startsWith( PAGE_PLAYLIST ) )
+    {
+        const QString file = currentPage.mid( PAGE_PLAYLIST.length() );
+        menu.addAction( qtr( "Play the playlist" ), this, [=]() { playAll( Playlists::read( file ).tracks ); } );
+        menu.addAction( qtr( "Add files..." ), this, [=]() {
+            const QList<QUrl> urls = QFileDialog::getOpenFileUrls( window(), qtr( "Add files" ) );
+            QStringList list;
+            foreach( const QUrl &url, urls )
+                list << url.toString( QUrl::FullyEncoded );
+            if( !list.isEmpty() )
+            {
+                Playlists::append( file, list );
+                refreshPlaylistPage();
+            }
+        } );
+        menu.addSeparator();
+    }
     menu.addAction( qtr( "Browse another folder..." ), this, [this]() { selectSection( SECTION_ADD ); } );
     if( currentPage.isEmpty() )
     {

@@ -135,6 +135,7 @@ private:
     static QMenu *RendererMenu(intf_thread_t *p_intf , QMenu *menu = NULL );
 
     /* Popups Menus */
+    static QMenu* RedesignPopupMenu( intf_thread_t *, bool );
     static void PopupMenuStaticEntries( QMenu *menu );
     static void PopupMenuPlaylistEntries( QMenu *menu, intf_thread_t *p_intf,
                                           input_thread_t *p_input );

@@ -56,6 +56,9 @@ namespace Redesign
      * Widgets with the "panelToggle" property (the buttons opening the panels)
      * are ignored, they toggle the panel themselves. */
     QTimer *outsideClickWatcher( QWidget *panel );
+
+    /* Dark native title bar for dialogs (Windows 10 1809+, no-op elsewhere) */
+    void darkTitleBar( QWidget *window );
 }
 
 #endif

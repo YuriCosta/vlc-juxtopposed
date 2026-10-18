@@ -44,6 +44,8 @@
 #include "components/overlay_panels.hpp"        // TracksPanel, SettingsPanel
 #include "components/library_sidebar.hpp"       // LibrarySidebar
 #include "util/thumbnailer.hpp"                 // Thumbnailer::killInstance
+#include "util/seek_preview.hpp"                // SeekPreviewer::killInstance
+#include "dialogs/add_subtitles.hpp"            // remembered subtitles
 #include "components/playlist/playlist.hpp"     // plWidget
 #include "dialogs/firstrun.hpp"                 // First Run
 #include "dialogs/playlist.hpp"                 // PlaylistDialog
@@ -66,6 +68,9 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QToolButton>
+#include <QComboBox>
+#include <QPainterPath>
+#include <QPushButton>
 #include <QFrame>
 #include <QStackedWidget>
 #include <QScreen>
@@ -304,6 +309,7 @@ MainInterface::~MainInterface()
 
     /* Stop the thumbnail worker thread before the module is unloaded */
     Thumbnailer::killInstance();
+    SeekPreviewer::killInstance();
 
     /* Delete the FSC controller */
     delete fullscreenControls;
@@ -386,41 +392,64 @@ void MainInterface::reloadPrefs()
     }
 }
 
+/* Redesign: "Continue where you left off?" right above the playback controls,
+ * where the eyes already are (instead of a bar at the top of the window) */
 void MainInterface::createResumePanel( QWidget *w )
 {
-    resumePanel = new QWidget( w );
+    /* mainLayout inserts the other widgets by index: keep its first slot */
+    QWidget *slot = new QWidget( w );
+    slot->hide();
+    w->layout()->addWidget( slot );
+
+    resumePanel = new QFrame( this );
+    resumePanel->setObjectName( "resumePanel" );
+    resumePanel->setAttribute( Qt::WA_NativeWindow ); /* above the native video */
     resumePanel->hide();
     QHBoxLayout *resumePanelLayout = new QHBoxLayout( resumePanel );
-    resumePanelLayout->setSpacing( 0 ); resumePanelLayout->setContentsMargins( 0, 0, 0, 0 );
+    resumePanelLayout->setSpacing( 12 );
+    resumePanelLayout->setContentsMargins( 16, 8, 8, 8 );
 
-    QLabel *continuePixmapLabel = new QLabel();
-    continuePixmapLabel->setPixmap( ImageHelper::loadSvgToPixmap( ":/menu/help.svg" , fontMetrics().height(), fontMetrics().height()) );
-    continuePixmapLabel->setContentsMargins( 5, 0, 5, 0 );
+    resumeLabel = new QLabel;
+    resumeLabel->setObjectName( "resumeText" );
 
-    QLabel *continueLabel = new QLabel( qtr( "Do you want to restart the playback where left off?") );
+    QPushButton *ok = new QPushButton( qtr( "&Continue" ) );
+    ok->setObjectName( "resumeContinue" );
+    ok->setCursor( Qt::PointingHandCursor );
 
     QToolButton *cancel = new QToolButton( resumePanel );
+    cancel->setObjectName( "resumeClose" );
+    cancel->setIcon( QIcon( ":/redesign/close.svg" ) );
+    cancel->setIconSize( QSize( 20, 20 ) );
     cancel->setAutoRaise( true );
-    cancel->setText( "X" );
+    cancel->setToolTip( qtr( "Start from the beginning" ) );
 
-    QPushButton *ok = new QPushButton( qtr( "&Continue" )  );
-
-    resumePanelLayout->addWidget( continuePixmapLabel );
-    resumePanelLayout->addWidget( continueLabel );
-    resumePanelLayout->addStretch( 1 );
+    resumePanelLayout->addWidget( resumeLabel );
     resumePanelLayout->addWidget( ok );
     resumePanelLayout->addWidget( cancel );
 
     resumeTimer = new QTimer( resumePanel );
     resumeTimer->setSingleShot( true );
-    resumeTimer->setInterval( 6000 );
+    resumeTimer->setInterval( 8000 );
 
     connect( resumeTimer, &QTimer::timeout, this, &MainInterface::hideResumePanel );
     connect( cancel, &QToolButton::clicked, this, &MainInterface::hideResumePanel );
     connect( THEMIM->getIM(), &InputManager::resumePlayback, this, &MainInterface::showResumePanel );
     BUTTONACT( ok, resumePlayback );
+}
 
-    w->layout()->addWidget( resumePanel );
+void MainInterface::placeResumePanel()
+{
+    if( !resumePanel || !stackCentralW )
+        return;
+    resumePanel->adjustSize();
+    const QRect area( stackCentralW->mapTo( this, QPoint( 0, 0 ) ), stackCentralW->size() );
+    const QSize size = resumePanel->sizeHint();
+    resumePanel->setGeometry( area.center().x() - size.width() / 2,
+                              area.bottom() - size.height() - 24, size.width(), size.height() );
+    QPainterPath path;
+    path.addRoundedRect( QRectF( resumePanel->rect() ), 10, 10 );
+    resumePanel->setMask( QRegion( path.toFillPolygon().toPolygon() ) );
+    resumePanel->raise();
 }
 
 void MainInterface::showResumePanel( int64_t _time ) {
@@ -435,9 +464,11 @@ void MainInterface::showResumePanel( int64_t _time ) {
         resumePlayback();
     else
     {
-        if( !isFullScreen() && !isMaximized() && !b_isWindowTiled )
-            resizeWindow( width(), height() + resumePanel->height() );
-        resumePanel->setVisible(true);
+        char psz_time[MSTRTIME_MAX_SIZE];
+        secstotimestr( psz_time, _time / CLOCK_FREQ );
+        resumeLabel->setText( qtr( "Continue where you left off (%1)?" ).arg( qfu( psz_time ) ) );
+        placeResumePanel();
+        resumePanel->setVisible( true );
         resumeTimer->start();
     }
 }
@@ -446,8 +477,6 @@ void MainInterface::hideResumePanel()
 {
     if( resumePanel->isVisible() )
     {
-        if( !isFullScreen() && !isMaximized() && !b_isWindowTiled )
-            resizeWindow( width(), height() - resumePanel->height() );
         resumePanel->hide();
         resumeTimer->stop();
     }
@@ -554,7 +583,11 @@ void MainInterface::createMainWidget( QSettings *creationSettings )
     miniLayout->addLayout( miniBar );
     miniPlayer->hide();
     centerArea->installEventFilter( this );
+    stackCentralW->installEventFilter( this );
     connect( THEMIM, &MainInputManager::inputChanged, this, &MainInterface::updateMiniPlayer );
+    connect( THEMIM, &MainInputManager::inputChanged, this, [this]() {
+        AddSubtitlesDialog::applySavedSubtitles( p_intf );
+    } );
 
     stackWidgetsSizes[bgWidget] =
         creationSettings->value( "MainWindow/bgSize", QSize( 600, 0 ) ).toSize();
@@ -1995,6 +2028,10 @@ bool MainInterface::eventFilter( QObject *obj, QEvent *event )
     /* Keep the mini player in the bottom right corner of the library */
     if( obj == centerArea && event->type() == QEvent::Resize )
         updateMiniPlayer();
+    /* and the resume prompt above the controls */
+    if( obj == stackCentralW && resumePanel && resumePanel->isVisible() &&
+        ( event->type() == QEvent::Resize || event->type() == QEvent::Move ) )
+        placeResumePanel();
 
     if ( event->type() == MainInterface::ToolbarsNeedRebuild ) {
         event->accept();

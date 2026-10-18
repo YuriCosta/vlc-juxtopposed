@@ -40,6 +40,8 @@
 
 #include "main_interface.hpp"                     /* View modifications */
 #include "dialogs_provider.hpp"                   /* Dialogs display */
+#include "dialogs/new_playlist.hpp"
+#include "util/playlists.hpp"
 #include "input_manager.hpp"                      /* Input Management */
 #include "recents.hpp"                            /* Recent Items */
 #include "actions_manager.hpp"                    /* Actions Management: play+volume */
@@ -1010,8 +1012,135 @@ QMenu* VLCMenuBar::MiscPopupMenu( intf_thread_t *p_intf, bool show )
 }
 
 /* Main Menu that sticks everything together  */
+/* Redesign (Figma "right-click menu"): the actions used while watching with
+ * their keys, then one submenu per topic, instead of every menu of the bar */
+QMenu* VLCMenuBar::RedesignPopupMenu( intf_thread_t *p_intf, bool show )
+{
+    MainInterface *mi = p_intf->p_sys->p_mi;
+    input_thread_t *p_input = THEMIM->getInput();
+    QMenu *menu = new QMenu();
+    menu->setObjectName( "redesignPopup" );
+    QAction *action;
+
+    auto addEntry = [&]( QMenu *m, const char *icon, const QString &text, const char *key ) {
+        QAction *a = m->addAction( QIcon( icon ), key ? text + "\t" + key : text );
+        return a;
+    };
+
+    const bool b_playing = THEMIM->getIM()->playingStatus() == PLAYING_S;
+    action = addEntry( menu, b_playing ? ":/toolbar/pause_b.svg" : ":/toolbar/play_b.svg",
+                       b_playing ? qtr( "Pause" ) : qtr( "Play" ), "Space" );
+    QObject::connect( action, &QAction::triggered, THEMIM, &MainInputManager::togglePlayPause );
+    action = addEntry( menu, ":/toolbar/stop_b.svg", qtr( "Stop" ), "S" );
+    action->setEnabled( p_input != NULL );
+    QObject::connect( action, &QAction::triggered, THEMIM, &MainInputManager::stop );
+    action = addEntry( menu, ":/toolbar/previous_b.svg", qtr( "Previous Item" ), "P" );
+    QObject::connect( action, &QAction::triggered, THEMIM, &MainInputManager::prev );
+    action = addEntry( menu, ":/toolbar/next_b.svg", qtr( "Next Item" ), "N" );
+    QObject::connect( action, &QAction::triggered, THEMIM, &MainInputManager::next );
+    action = addEntry( menu, ":/toolbar/record.svg", qtr( "Record" ), "Shift+R" );
+    action->setEnabled( p_input != NULL );
+    QObject::connect( action, &QAction::triggered, ActionsManager::getInstance( p_intf ), &ActionsManager::record );
+    menu->addSeparator();
+
+    if( mi )
+    {
+        const bool b_minimal = mi->isMinimalView();
+        action = addEntry( menu, ":/redesign/sidebar.svg", b_minimal ? qtr( "Show UI" ) : qtr( "Hide UI" ), "Ctrl+H" );
+        QObject::connect( action, &QAction::triggered, mi, [mi, b_minimal]() { mi->toggleMinimalView( !b_minimal ); } );
+        menu->addSeparator();
+    }
+
+    /* the same menus as the "..." button, one per topic */
+    QMenu *submenu = new QMenu( menu );
+    action = menu->addMenu( NavigMenu( p_intf, submenu ) );
+    action->setText( qtr( "Playback" ) );
+    action->setIcon( QIcon( ":/toolbar/play_b.svg" ) );
+    action->setEnabled( p_input != NULL );
+
+    submenu = new QMenu( menu );
+    action = menu->addMenu( VideoMenu( p_intf, submenu ) );
+    action->setText( qtr( "Video" ) );
+    action->setIcon( QIcon( ":/redesign/lib-videos.svg" ) );
+    action->setEnabled( p_input != NULL );
+
+    submenu = new QMenu( menu );
+    action = menu->addMenu( AudioMenu( p_intf, submenu ) );
+    action->setText( qtr( "Audio" ) );
+    action->setIcon( QIcon( ":/toolbar/audio_tracks.svg" ) );
+    action->setEnabled( p_input != NULL );
+
+    submenu = new QMenu( menu );
+    action = menu->addMenu( SubtitleMenu( p_intf, submenu, true ) );
+    action->setText( qtr( "Subtitle" ) );
+    action->setIcon( QIcon( ":/toolbar/subtitle_tracks.svg" ) );
+    action->setEnabled( p_input != NULL );
+    menu->addSeparator();
+
+    submenu = new QMenu( menu );
+    action = menu->addMenu( ToolsMenu( p_intf, submenu ) );
+    action->setText( qtr( "More Settings" ) );
+    action->setIcon( QIcon( ":/toolbar/extended.svg" ) );
+
+    QMenu *playlist = new QMenu( qtr( "Playlist" ), menu );
+    playlist->setIcon( QIcon( ":/toolbar/playlist.svg" ) );
+    if( mi )
+    {
+        action = playlist->addAction( qtr( "Show the queue" ) );
+        QObject::connect( action, &QAction::triggered, mi, &MainInterface::toggleQueuePanel );
+        action = playlist->addAction( qtr( "Show the library" ) );
+        QObject::connect( action, &QAction::triggered, mi, &MainInterface::showLibraryForCurrentMedia );
+        playlist->addSeparator();
+    }
+    addDPStaticEntry( playlist, qtr( "Add files to the queue..." ), "", SLOT( PLAppendDialog() ) );
+    action = playlist->addAction( qtr( "Clear the queue" ) );
+    QObject::connect( action, &QAction::triggered, [p_intf]() { playlist_Clear( THEPL, pl_Unlocked ); } );
+
+    /* the media being played, into a new or a saved playlist */
+    char *psz_uri = p_input ? input_item_GetURI( input_GetItem( p_input ) ) : NULL;
+    if( psz_uri )
+    {
+        const QStringList urls( qfu( psz_uri ) );
+        free( psz_uri );
+        QMenu *addTo = playlist->addMenu( QIcon( ":/redesign/lib-playlists.svg" ), qtr( "Add to playlist" ) );
+        action = addTo->addAction( QIcon( ":/redesign/lib-add-small.svg" ), qtr( "New playlist..." ) );
+        QObject::connect( action, &QAction::triggered, [p_intf, mi, urls]() {
+            NewPlaylistDialog::create( p_intf, mi, urls );
+        } );
+        const QStringList files = Playlists::list( p_intf );
+        if( !files.isEmpty() )
+            addTo->addSeparator();
+        foreach( const QString &file, files )
+        {
+            action = addTo->addAction( Playlists::read( file ).title );
+            QObject::connect( action, &QAction::triggered, [file, urls]() { Playlists::append( file, urls ); } );
+        }
+    }
+    menu->addMenu( playlist );
+
+    QMenu *openmenu = new QMenu( qtr( "Open Media" ), menu );
+    openmenu->setIcon( QIcon( ":/redesign/folder.svg" ) );
+    addDPStaticEntry( openmenu, qtr( I_OP_OPF ), ":/type/file-asym.svg", SLOT( openFileDialog() ) );
+    addDPStaticEntry( openmenu, qtr( I_OP_OPDIR ), ":/type/folder-grey.svg", SLOT( PLOpenDir() ) );
+    addDPStaticEntry( openmenu, qtr( "Open &Disc..." ), ":/type/disc.svg", SLOT( openDiscDialog() ) );
+    addDPStaticEntry( openmenu, qtr( "Open &Network..." ), ":/type/network.svg", SLOT( openNetDialog() ) );
+    addDPStaticEntry( openmenu, qtr( "Open &Capture Device..." ), ":/type/capture-card.svg", SLOT( openCaptureDialog() ) );
+    menu->addMenu( openmenu );
+    menu->addSeparator();
+
+    addDPStaticEntry( menu, qtr( "Quit VLC" ) + "\tCtrl+Q", ":/menu/exit.svg", SLOT( quit() ) );
+
+    if( show )
+        menu->popup( QCursor::pos() );
+    return menu;
+}
+
 QMenu* VLCMenuBar::PopupMenu( intf_thread_t *p_intf, bool show )
 {
+    /* the skins interface keeps the complete menu */
+    if( !p_intf->p_sys->b_isDialogProvider && p_intf->p_sys->p_mi )
+        return RedesignPopupMenu( p_intf, show );
+
     POPUP_BOILERPLATE
 
     /* */

@@ -24,6 +24,7 @@
 #include "input_manager.hpp"
 #include "dialogs_provider.hpp"
 #include "util/redesign.hpp"
+#include "dialogs/add_subtitles.hpp"
 
 #include <vlc_aout.h>
 #include <vlc_vout.h>
@@ -413,7 +414,10 @@ void TracksPanel::refresh()
     tabLayouts[TAB_SUBTITLES]->addWidget( divider() );
     QToolButton *addSub = choiceRow( qtr( "Add a subtitle file..." ), false );
     addSub->setIcon( QIcon( ":/redesign/lib-add-small.svg" ) );
-    connect( addSub, &QToolButton::clicked, this, [this]() { THEDP->loadSubtitlesFile(); } );
+    connect( addSub, &QToolButton::clicked, this, [this]() {
+        hide();
+        AddSubtitlesDialog::open( p_intf, window() );
+    } );
     tabLayouts[TAB_SUBTITLES]->addWidget( addSub );
 
     foreach( QVBoxLayout *layout, tabLayouts )
@@ -543,6 +547,20 @@ void SettingsPanel::buildPlayback( QVBoxLayout *layout )
         const int v = qRound( var_GetFloat( THEPL, "rate" ) * 100 );
         speed->setValue( v );
         speedValue->setText( QString::number( v / 100.0, 'f', 2 ) + "x" );
+    };
+
+    layout->addWidget( divider() );
+    layout->addWidget( sectionLabel( qtr( "Queue" ), true ) );
+    QCheckBox *autoNext = new QCheckBox( qtr( "Play the next file of the folder at the end" ) );
+    autoNext->setObjectName( "panelCheck" );
+    autoNext->setToolTip( qtr( "When the queue only holds the media that was opened" ) );
+    layout->addWidget( autoNext );
+    connect( autoNext, &QCheckBox::toggled, this, [this]( bool b ) {
+        MainInputManager::setAutoNextInFolder( p_intf, b );
+    } );
+    refreshers << [this, autoNext]() {
+        const QSignalBlocker blocker( autoNext );
+        autoNext->setChecked( MainInputManager::autoNextInFolder( p_intf ) );
     };
 
     layout->addWidget( divider() );
@@ -813,7 +831,10 @@ void SettingsPanel::buildSubtitles( QVBoxLayout *layout )
 
     layout->addWidget( divider() );
     QToolButton *addSub = footerButton( qtr( "Add a subtitle file..." ) );
-    connect( addSub, &QToolButton::clicked, this, [this]() { THEDP->loadSubtitlesFile(); } );
+    connect( addSub, &QToolButton::clicked, this, [this]() {
+        hide();
+        AddSubtitlesDialog::open( p_intf, window() );
+    } );
     layout->addWidget( addSub );
     layout->addStretch( 1 );
 }

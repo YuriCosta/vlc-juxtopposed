@@ -136,6 +136,10 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/util/input_slider.cpp gui/qt/util/input_slider.hpp \
 	gui/qt/util/redesign.cpp gui/qt/util/redesign.hpp \
 	gui/qt/util/thumbnailer.cpp gui/qt/util/thumbnailer.hpp \
+	gui/qt/util/seek_preview.cpp gui/qt/util/seek_preview.hpp \
+	gui/qt/dialogs/add_subtitles.cpp gui/qt/dialogs/add_subtitles.hpp \
+	gui/qt/dialogs/new_playlist.cpp gui/qt/dialogs/new_playlist.hpp \
+	gui/qt/util/playlists.cpp gui/qt/util/playlists.hpp \
 	gui/qt/util/timetooltip.cpp gui/qt/util/timetooltip.hpp \
 	gui/qt/util/customwidgets.cpp gui/qt/util/customwidgets.hpp \
 	gui/qt/util/searchlineedit.cpp gui/qt/util/searchlineedit.hpp \
@@ -220,6 +224,9 @@ nodist_libqt_plugin_la_SOURCES = \
 	gui/qt/components/overlay_panels.moc.cpp \
 	gui/qt/components/library_sidebar.moc.cpp \
 	gui/qt/util/thumbnailer.moc.cpp \
+	gui/qt/util/seek_preview.moc.cpp \
+	gui/qt/dialogs/add_subtitles.moc.cpp \
+	gui/qt/dialogs/new_playlist.moc.cpp \
 	gui/qt/components/controller_widget.moc.cpp \
 	gui/qt/components/epg/EPGChannels.moc.cpp \
 	gui/qt/components/epg/EPGProgram.moc.cpp \
@@ -476,6 +483,10 @@ libqt_plugin_la_RES = \
 	gui/qt/pixmaps/redesign/lib-popout.svg \
 	gui/qt/pixmaps/redesign/lib-view.svg \
 	gui/qt/pixmaps/redesign/lib-search.svg \
+	gui/qt/pixmaps/redesign/chevron-down.svg \
+	gui/qt/pixmaps/redesign/sub-file.svg \
+	gui/qt/pixmaps/redesign/video-file.svg \
+	gui/qt/pixmaps/redesign/check.svg \
 	gui/qt/pixmaps/types/capture-card_16px.svg \
 	gui/qt/pixmaps/types/disc_16px.svg \
 	gui/qt/pixmaps/types/file-asym_16px.svg \

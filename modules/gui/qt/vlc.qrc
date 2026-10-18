@@ -191,5 +191,9 @@
         <file alias="lib-popout.svg">pixmaps/redesign/lib-popout.svg</file>
         <file alias="lib-view.svg">pixmaps/redesign/lib-view.svg</file>
         <file alias="lib-search.svg">pixmaps/redesign/lib-search.svg</file>
+        <file alias="chevron-down.svg">pixmaps/redesign/chevron-down.svg</file>
+        <file alias="sub-file.svg">pixmaps/redesign/sub-file.svg</file>
+        <file alias="video-file.svg">pixmaps/redesign/video-file.svg</file>
+        <file alias="check.svg">pixmaps/redesign/check.svg</file>
     </qresource>
 </RCC>

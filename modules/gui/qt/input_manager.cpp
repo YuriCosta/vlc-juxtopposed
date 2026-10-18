@@ -40,6 +40,8 @@
 #include <QFile>
 #include <QDir>
 #include <QCollator>
+#include <QTimer>
+#include <QSettings>
 #include <QFileInfo>
 
 #include <algorithm>
@@ -490,6 +492,9 @@ void InputManager::UpdateStatus()
     if( i_old_playing_status != state )
     {
         i_old_playing_status = state;
+        /* the end of the stream, not a stop in the middle of it */
+        if( state == END_S && var_GetFloat( p_input, "position" ) >= 0.97f )
+            emit endReached();
         emit playingStatusChanged( state );
     }
 }
@@ -1004,6 +1009,24 @@ MainInputManager::MainInputManager( intf_thread_t *_p_intf )
     var_AddCallback( THEPL, "playlist-item-append", MainInputManager::PLItemAppended, this );
     var_AddCallback( THEPL, "playlist-item-deleted", MainInputManager::PLItemRemoved, this );
 
+    /* Redesign: binge mode, the next episode of the folder after this one */
+    connect( im, &InputManager::endReached, this, [this]() {
+        if( !autoNextInFolder( p_intf ) || var_GetBool( THEPL, "repeat" ) ||
+            var_GetBool( THEPL, "loop" ) || var_InheritBool( p_intf, "play-and-exit" ) )
+            return;
+        input_item_t *p_item = currentInputItem();
+        char *psz_uri = p_item ? input_item_GetURI( p_item ) : NULL;
+        if( !psz_uri )
+            return;
+        const QUrl url( qfu( psz_uri ) );
+        free( psz_uri );
+        if( !url.isLocalFile() )
+            return;
+        const QString path = url.toLocalFile();
+        /* let the playlist finish with this item first */
+        QTimer::singleShot( 200, this, [this, path]() { playNeighbourInFolder( +1, path ); } );
+    } );
+
     /* Core Callbacks to widget */
     random.addCallback( this, SLOT(notifyRandom(bool)) );
     repeat.addCallback( this, SLOT(notifyRepeatLoop(bool)) );
@@ -1129,7 +1152,17 @@ QStringList MainInputManager::folderMedia( const QString &folder )
 
 /* Redesign: when the queue only holds the media that was opened (nobody built
  * a playlist), next and previous move to the neighbour files of its folder */
-bool MainInputManager::playNeighbourInFolder( int direction )
+bool MainInputManager::autoNextInFolder( intf_thread_t *p_intf )
+{
+    return getSettings()->value( "Redesign/AutoNextInFolder", true ).toBool();
+}
+
+void MainInputManager::setAutoNextInFolder( intf_thread_t *p_intf, bool b_enable )
+{
+    getSettings()->setValue( "Redesign/AutoNextInFolder", b_enable );
+}
+
+bool MainInputManager::playNeighbourInFolder( int direction, const QString &fromPath )
 {
     bool b_single;
     {
@@ -1137,19 +1170,26 @@ bool MainInputManager::playNeighbourInFolder( int direction )
         playlist_item_t *root = THEPL->p_playing;
         b_single = root && root->i_children == 1 && root->pp_children[0]->i_children < 0;
     }
-    if( !b_single || !p_input )
+    if( !b_single )
         return false;
 
-    input_item_t *p_item = input_GetItem( p_input );
-    char *psz_uri = p_item ? input_item_GetURI( p_item ) : NULL;
-    if( !psz_uri )
-        return false;
-    const QUrl url( qfu( psz_uri ) );
-    free( psz_uri );
-    if( !url.isLocalFile() )
-        return false;
+    QString currentPath = fromPath;
+    if( currentPath.isEmpty() )
+    {
+        if( !p_input )
+            return false;
+        input_item_t *p_item = input_GetItem( p_input );
+        char *psz_uri = p_item ? input_item_GetURI( p_item ) : NULL;
+        if( !psz_uri )
+            return false;
+        const QUrl url( qfu( psz_uri ) );
+        free( psz_uri );
+        if( !url.isLocalFile() )
+            return false;
+        currentPath = url.toLocalFile();
+    }
 
-    const QFileInfo current( url.toLocalFile() );
+    const QFileInfo current( currentPath );
     const QStringList files = folderMedia( current.absolutePath() );
     const int index = files.indexOf( current.fileName() );
     const int target = index + direction;

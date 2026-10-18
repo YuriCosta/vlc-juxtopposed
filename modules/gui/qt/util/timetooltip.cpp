@@ -33,8 +33,14 @@
 
 #define TIP_HEIGHT 5
 
+/* Figma "thumbnail": 256x144 frame in a 8px padded card, time below */
+#define CARD_PADDING   8
+#define CARD_RADIUS    10
+#define FRAME_WIDTH    256
+#define FRAME_HEIGHT   144
+
 TimeTooltip::TimeTooltip( QWidget *parent ) :
-    QWidget( parent )
+    QWidget( parent ), mTipX( -1 ), mPreview( false )
 {
     setWindowFlags( Qt::ToolTip                 |
                     Qt::WindowStaysOnTopHint    |
@@ -46,9 +52,8 @@ TimeTooltip::TimeTooltip( QWidget *parent ) :
     setAttribute( Qt::WA_TranslucentBackground );
     setAttribute( Qt::WA_TransparentForMouseEvents );
 
-    // Inherit from the system default font size -5
-    mFont = QFont( "Verdana", qMax( qApp->font().pointSize() - 5, 7 ) );
-    mTipX = -1;
+    mFont = qApp->font();
+    mFont.setPixelSize( 15 );
 
     // By default the widget is unintialized and should not be displayed
     resize( 0, 0 );
@@ -62,22 +67,16 @@ void TimeTooltip::adjustPosition()
         return;
     }
 
-    // Get the bounding box required to print the text and add some padding
     QFontMetrics metrics( mFont );
-    QRect textbox = metrics.boundingRect( mDisplayedText );
-    textbox.adjust( -2, -2, 2, 2 );
-    textbox.moveTo( 0, 0 );
+    const int textWidth = metrics.width( mDisplayedText ) + 2 * CARD_PADDING;
+    const int textHeight = metrics.height() + 8;
+    const QSize size = mPreview
+        ? QSize( qMax( FRAME_WIDTH + 2 * CARD_PADDING, textWidth ),
+                 CARD_PADDING + FRAME_HEIGHT + textHeight + CARD_PADDING / 2 )
+        : QSize( textWidth + 8, textHeight + 4 );
 
-    // Resize the widget to fit our needs
-    QSize size( textbox.width() + 1, textbox.height() + TIP_HEIGHT + 1 );
-
-    // The desired label position is just above the target
-    QPoint position( mTarget.x() - size.width() / 2,
-#if defined( Q_OS_WIN )
-        mTarget.y() - 2 * size.height() - TIP_HEIGHT / 2 );
-#else
-        mTarget.y() - size.height() - TIP_HEIGHT / 2 );
-#endif
+    /* Right above the seek bar, centered on the hovered position */
+    QPoint position( mTarget.x() - size.width() / 2, mTarget.y() - size.height() - 10 );
 
     // Keep the tooltip on the same screen if possible
 #if QT_VERSION >= QT_VERSION_CHECK(5, 10, 0)
@@ -94,36 +93,17 @@ void TimeTooltip::adjustPosition()
         screen.top() + screen.height() - size.height() ) ) );
 
     move( position );
-
-    int tipX = mTarget.x() - position.x();
-    if( mBox != textbox || mTipX != tipX )
-    {
-        mBox = textbox;
-        mTipX = tipX;
-
+    if( this->size() != size )
         resize( size );
-        buildPath();
-    }
+    mBox = QRect( QPoint( 0, 0 ), size );
+    buildPath();
 }
 
 void TimeTooltip::buildPath()
 {
-    // Prepare the painter path for future use so
-    // we only have to generate the text at runtime.
-
-    // Draw the text box
     mPainterPath = QPainterPath();
-    mPainterPath.addRect( mBox );
-
-    // Draw the tip
-    QPolygonF polygon;
-    polygon << QPoint( qMax( 0, mTipX - 3 ), mBox.height() )
-            << QPoint( mTipX, mBox.height() + TIP_HEIGHT )
-            << QPoint( qMin( mTipX + 3, mBox.width() ), mBox.height() );
-    mPainterPath.addPolygon( polygon );
-
-    // Store the simplified version of the path
-    mPainterPath = mPainterPath.simplified();
+    mPainterPath.addRoundedRect( QRectF( mBox ).adjusted( 0.5, 0.5, -0.5, -0.5 ),
+                                 mPreview ? CARD_RADIUS : 6, mPreview ? CARD_RADIUS : 6 );
 }
 
 void TimeTooltip::setTip( const QPoint& target, const QString& time, const QString& text )
@@ -144,6 +124,16 @@ void TimeTooltip::setTip( const QPoint& target, const QString& time, const QStri
     raise();
 }
 
+void TimeTooltip::setPreview( bool b_preview, const QImage &image )
+{
+    const bool b_changed = b_preview != mPreview;
+    mPreview = b_preview;
+    mImage = image;
+    if( b_changed )
+        adjustPosition();
+    update();
+}
+
 void TimeTooltip::show()
 {
     setVisible( true );
@@ -153,13 +143,32 @@ void TimeTooltip::show()
 void TimeTooltip::paintEvent( QPaintEvent * )
 {
     QPainter p( this );
-    p.setRenderHints( QPainter::TextAntialiasing );
+    p.setRenderHints( QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform );
+    p.setCompositionMode( QPainter::CompositionMode_Source );
+    p.fillRect( rect(), Qt::transparent );
+    p.setCompositionMode( QPainter::CompositionMode_SourceOver );
 
-    p.setPen( Qt::black );
-    p.setBrush( qApp->palette().base() );
+    p.setPen( QColor( 0x22, 0x22, 0x22 ) );
+    p.setBrush( QColor( 0x1B, 0x1B, 0x1B ) );
     p.drawPath( mPainterPath );
 
+    QRect textRect = mBox;
+    if( mPreview )
+    {
+        const QRect frame( ( mBox.width() - FRAME_WIDTH ) / 2, CARD_PADDING, FRAME_WIDTH, FRAME_HEIGHT );
+        QPainterPath clip;
+        clip.addRoundedRect( QRectF( frame ), 6, 6 );
+        p.save();
+        p.setClipPath( clip );
+        if( mImage.isNull() )
+            p.fillRect( frame, QColor( 0x30, 0x30, 0x30 ) );
+        else
+            p.drawImage( frame, mImage );
+        p.restore();
+        textRect.setTop( frame.bottom() + 2 );
+    }
+
     p.setFont( mFont );
-    p.setPen( QPen( qApp->palette().text(), 1 ) );
-    p.drawText( mBox, Qt::AlignCenter, mDisplayedText );
+    p.setPen( QColor( 0x8F, 0x8F, 0x8F ) );
+    p.drawText( textRect, Qt::AlignCenter, mDisplayedText );
 }

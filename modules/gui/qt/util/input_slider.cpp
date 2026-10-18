@@ -36,6 +36,7 @@
 #include "imagehelper.hpp"
 #include "customwidgets.hpp"
 #include "util/redesign.hpp"
+#include "util/seek_preview.hpp"
 #include <vlc_actions.h>
 
 #include <QPaintEvent>
@@ -117,6 +118,14 @@ SeekSlider::SeekSlider( intf_thread_t *p_intf, Qt::Orientation q, QWidget *_pare
     /* Tooltip bubble */
     mTimeTooltip = new TimeTooltip( NULL );
     mTimeTooltip->setMouseTracking( true );
+
+    /* Redesign: the frame arrives a bit after the hover */
+    mPreviewTime = 0;
+    connect( SeekPreviewer::instance( p_intf ), &SeekPreviewer::previewReady, this, [this]() {
+        if( mTimeTooltip->isVisible() && !mPreviewMrl.isEmpty() )
+            mTimeTooltip->setPreview( true, SeekPreviewer::instance( this->p_intf )
+                                                ->preview( mPreviewMrl, mPreviewTime ) );
+    } );
 
     /* Properties */
     setRange( MIN_SLIDER_VALUE, MAX_SLIDER_VALUE );
@@ -425,11 +434,34 @@ void SeekSlider::mouseMoveEvent( QMouseEvent *event )
         QPoint target( pos.x() - ( event->x() - posX ),
                 QWidget::mapToGlobal( QPoint( 0, 0 ) ).y() );
         if( likely( size().width() > handleLength() ) ) {
-            secstotimestr( psz_length, getValuePercentageFromXPos( event->x() ) * inputLength );
+            const float f_pos = getValuePercentageFromXPos( event->x() );
+            secstotimestr( psz_length, f_pos * inputLength );
             mTimeTooltip->setTip( target, psz_length, chapterLabel );
+            updatePreview( f_pos );
         }
     }
     event->accept();
+}
+
+/* Redesign: frame of the video at the hovered time */
+void SeekSlider::updatePreview( float f_pos )
+{
+    if( b_classic || !THEMIM->getIM()->hasVideo() )
+    {
+        mTimeTooltip->setPreview( false );
+        return;
+    }
+    input_item_t *p_item = THEMIM->currentInputItem();
+    char *psz_uri = p_item ? input_item_GetURI( p_item ) : NULL;
+    if( !psz_uri )
+    {
+        mTimeTooltip->setPreview( false );
+        return;
+    }
+    mPreviewMrl = qfu( psz_uri );
+    free( psz_uri );
+    mPreviewTime = (int64_t)( f_pos * inputLength ) * CLOCK_FREQ;
+    mTimeTooltip->setPreview( true, SeekPreviewer::instance( p_intf )->preview( mPreviewMrl, mPreviewTime ) );
 }
 
 void SeekSlider::wheelEvent( QWheelEvent *event )
@@ -465,6 +497,7 @@ void SeekSlider::enterEvent( QEvent * )
 void SeekSlider::leaveEvent( QEvent * )
 {
     hideHandleTimer->start();
+    SeekPreviewer::instance( p_intf )->cancel();
     /* Hide the tooltip
        - if the mouse leave the slider rect (Note: it can still be
          over the tooltip!)

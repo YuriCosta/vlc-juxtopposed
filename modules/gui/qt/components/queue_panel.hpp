@@ -27,10 +27,14 @@
 
 #include <QFrame>
 
+class QButtonGroup;
 class QLabel;
 class QListView;
+class QStackedWidget;
+class QStandardItemModel;
 class QToolButton;
 class PLModel;
+class SeekPoints;
 
 /* Figma "Controls / queue": a 400px panel floating over the video, above the
  * bottom-right of the control bar, listing what will be played next.
@@ -62,6 +66,9 @@ private slots:
     void showSortMenu();
     void setRandom( bool );
     void setRepeat( int );
+    void showTab( int );
+    void updateBookmarks();
+    void updateChapters();
 
 private:
     QToolButton *createButton( const QString &icon, const QString &tooltip );
@@ -73,6 +80,16 @@ private:
     QLabel        *summaryLabel;
     QToolButton   *repeatButton;
     QToolButton   *shuffleButton;
+
+    QButtonGroup       *tabs;
+    QStackedWidget     *pages;
+    QStandardItemModel *bookmarksModel;
+    QListView          *bookmarksView;
+    QLabel             *bookmarksSummary;
+    QStandardItemModel *chaptersModel;
+    QListView          *chaptersView;
+    QLabel             *chaptersSummary;
+    SeekPoints         *seekPoints;
 };
 
 #endif

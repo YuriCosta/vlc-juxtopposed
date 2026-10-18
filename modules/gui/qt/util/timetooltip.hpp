@@ -25,6 +25,7 @@
 #include "qt.hpp"
 
 #include <QWidget>
+#include <QImage>
 #include <QPainterPath>
 
 class TimeTooltip : public QWidget
@@ -33,6 +34,9 @@ class TimeTooltip : public QWidget
 public:
     explicit TimeTooltip( QWidget *parent = 0 );
     void setTip( const QPoint& pos, const QString& time, const QString& text );
+    /* Redesign: frame of the media at the hovered time (Figma "thumbnail").
+     * b_preview reserves the room for it even before the frame arrives. */
+    void setPreview( bool b_preview, const QImage &image = QImage() );
     virtual void show();
 
 protected:
@@ -49,6 +53,8 @@ private:
     QRect mBox;
     QPainterPath mPainterPath;
     int mTipX;
+    bool mPreview;
+    QImage mImage;
 };
 
 #endif // TIMETOOLTIP_H

@@ -214,6 +214,8 @@ private slots:
     void AtoBLoop( float, int64_t, int );
 
 signals:
+    /// The media played until its end (not stopped by the user)
+    void endReached();
     /// Send new position, new time and new length
     void positionUpdated( float , int64_t, int );
     void remainingTimeChanged( bool );
@@ -280,6 +282,9 @@ public:
 
     /* Media files of a folder, sorted like the library */
     static QStringList folderMedia( const QString &folder );
+    /* Redesign: play the next file of the folder when a lone media ends */
+    static bool autoNextInFolder( intf_thread_t * );
+    static void setAutoNextInFolder( intf_thread_t *, bool );
     // Probe for initial input. Doing this from the constructor would cause
     // the getInstance to call itself recursively from the inputChangedHandler
     void probeCurrentInput();
@@ -289,7 +294,7 @@ protected:
 
 private:
     MainInputManager( intf_thread_t * );
-    bool playNeighbourInFolder( int direction );
+    bool playNeighbourInFolder( int direction, const QString &fromPath = QString() );
     virtual ~MainInputManager();
 
     void customEvent( QEvent * ) override;
