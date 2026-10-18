@@ -1120,7 +1120,7 @@ QMenu* VLCMenuBar::RedesignPopupMenu( intf_thread_t *p_intf, bool show )
 
     QMenu *openmenu = new QMenu( qtr( "Open Media" ), menu );
     openmenu->setIcon( QIcon( ":/redesign/folder.svg" ) );
-    addDPStaticEntry( openmenu, qtr( I_OP_OPF ), ":/type/file-asym.svg", SLOT( openFileDialog() ) );
+    addDPStaticEntry( openmenu, qtr( "Open &File..." ), ":/type/file-asym.svg", SLOT( simpleOpenDialog() ) );
     addDPStaticEntry( openmenu, qtr( I_OP_OPDIR ), ":/type/folder-grey.svg", SLOT( PLOpenDir() ) );
     addDPStaticEntry( openmenu, qtr( "Open &Disc..." ), ":/type/disc.svg", SLOT( openDiscDialog() ) );
     addDPStaticEntry( openmenu, qtr( "Open &Network..." ), ":/type/network.svg", SLOT( openNetDialog() ) );

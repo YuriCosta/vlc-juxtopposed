@@ -24,6 +24,9 @@
 
 #include <QApplication>
 #include <QCursor>
+#include <QIcon>
+#include <QPainter>
+#include <QPixmap>
 #include <QTimer>
 #include <QWidget>
 
@@ -51,6 +54,33 @@ void Redesign::darkTitleBar( QWidget *window )
 #else
     Q_UNUSED( window );
 #endif
+}
+
+QPixmap Redesign::tinted( const QPixmap &pixmap, const QColor &color )
+{
+    QPixmap result( pixmap.size() );
+    result.setDevicePixelRatio( pixmap.devicePixelRatio() );
+    result.fill( Qt::transparent );
+    QPainter painter( &result );
+    painter.drawPixmap( 0, 0, pixmap );
+    painter.setCompositionMode( QPainter::CompositionMode_SourceIn );
+    painter.fillRect( result.rect(), color );
+    return result;
+}
+
+QIcon Redesign::activeIcon( const QIcon &icon, const QSize &size )
+{
+    QIcon result;
+    /* 1x and 2x, the screen may be scaled */
+    foreach( int scale, QList<int>() << 1 << 2 )
+    {
+        const QPixmap normal = icon.pixmap( size * scale );
+        result.addPixmap( normal, QIcon::Normal, QIcon::Off );
+        result.addPixmap( tinted( normal, Accent ), QIcon::Normal, QIcon::On );
+        result.addPixmap( tinted( normal, Accent ), QIcon::Active, QIcon::On );
+        result.addPixmap( normal, QIcon::Active, QIcon::Off );
+    }
+    return result;
 }
 
 QTimer *Redesign::outsideClickWatcher( QWidget *panel )
@@ -454,6 +484,152 @@ QString Redesign::styleSheet()
         "}"
         "QDialog#addSubtitles QToolButton#subsSave:hover, QDialog#addSubtitles QToolButton#subsCancel:hover {"
         "  background: @bright@;"
+        "}"
+        "QToolButton#libraryRailButton:checked {"
+        "  background: @dim@;"
+        "  color: #EAEAEA;"
+        "}"
+        "QDialog#settingsDialog {"
+        "  background: @panel@;"
+        "}"
+        "QDialog#settingsDialog QWidget#settingsSide {"
+        "  background: @track@;"
+        "}"
+        "QDialog#settingsDialog QLineEdit#settingsSearch {"
+        "  background: @bara4@;"
+        "  color: @fgstrong@;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 6px 8px;"
+        "  font-size: 14px;"
+        "}"
+        "QDialog#settingsDialog QScrollArea#settingsCategories, QDialog#settingsDialog QWidget#settingsCategoryList {"
+        "  background: @bara4@;"
+        "  border-radius: 6px;"
+        "}"
+        "QDialog#settingsDialog QLabel#settingsGroup {"
+        "  color: @secondary@;"
+        "  font-size: 14px;"
+        "  padding: 8px 10px 0px 10px;"
+        "}"
+        "QDialog#settingsDialog QToolButton#settingsCategory {"
+        "  background: transparent;"
+        "  color: @fg@;"
+        "  border: none;"
+        "  border-radius: 2px;"
+        "  padding: 4px 8px;"
+        "  font-size: 14px;"
+        "  text-align: left;"
+        "}"
+        "QDialog#settingsDialog QToolButton#settingsCategory:hover {"
+        "  background: @track@;"
+        "}"
+        "QDialog#settingsDialog QToolButton#settingsCategory:checked {"
+        "  background: @dim@;"
+        "  color: #EAEAEA;"
+        "}"
+        "QDialog#settingsDialog QWidget#settingsMain, QDialog#settingsDialog QScrollArea#settingsPage,"
+        "QDialog#settingsDialog QWidget#settingsContent {"
+        "  background: @panel@;"
+        "}"
+        "QDialog#settingsDialog QLabel#settingsTitle {"
+        "  background: @track@;"
+        "  color: @fgstrong@;"
+        "  font-size: 16px;"
+        "  padding-left: 24px;"
+        "}"
+        "QDialog#settingsDialog QLabel#setSection {"
+        "  color: #C6C6C6;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "}"
+        "QDialog#settingsDialog QLabel#setLabel {"
+        "  color: @fg@;"
+        "  font-size: 14px;"
+        "}"
+        "QDialog#settingsDialog QLabel#setTick {"
+        "  color: @fg@;"
+        "  font-size: 12px;"
+        "}"
+        "QDialog#settingsDialog QComboBox#setCombo, QDialog#settingsDialog QLineEdit#setText,"
+        "QDialog#settingsDialog QSpinBox#setSpin, QDialog#settingsDialog QDoubleSpinBox#setSpin {"
+        "  background: @track@;"
+        "  color: @fg@;"
+        "  border: 2px solid @bara4@;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 14px;"
+        "  min-height: 20px;"
+        "}"
+        "QDialog#settingsDialog QComboBox#setCombo {"
+        "  background: @bara4@;"
+        "  border-color: @track@;"
+        "}"
+        "QDialog#settingsDialog QComboBox#setCombo::drop-down {"
+        "  border: none;"
+        "  width: 32px;"
+        "}"
+        "QDialog#settingsDialog QComboBox#setCombo::down-arrow {"
+        "  image: url(:/redesign/chevron-down.svg);"
+        "  width: 22px;"
+        "  height: 22px;"
+        "}"
+        "QDialog#settingsDialog QComboBox#setCombo QAbstractItemView {"
+        "  background: @bar@;"
+        "  color: @fgstrong@;"
+        "  selection-background-color: @accentbg@;"
+        "  selection-color: @accent@;"
+        "}"
+        "QDialog#settingsDialog QToolButton#setButton, QDialog#settingsDialog QToolButton#setColor {"
+        "  background: @bar@;"
+        "  color: @fgstrong@;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 7px 20px;"
+        "  font-size: 14px;"
+        "  font-weight: bold;"
+        "}"
+        "QDialog#settingsDialog QToolButton#setColor {"
+        "  background: @track@;"
+        "  font-weight: normal;"
+        "  padding: 6px 10px;"
+        "}"
+        "QDialog#settingsDialog QToolButton#setButton:hover, QDialog#settingsDialog QToolButton#setColor:hover {"
+        "  background: @bright@;"
+        "}"
+        "QDialog#settingsDialog QPushButton#setAdvanced {"
+        "  background: @bar@;"
+        "  color: @fg@;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "  padding: 8px;"
+        "  font-size: 14px;"
+        "}"
+        "QDialog#settingsDialog QPushButton#setAdvanced:hover {"
+        "  background: @dim@;"
+        "}"
+        "QDialog#settingsDialog QSlider#setSlider::groove:horizontal {"
+        "  background: @track@;"
+        "  height: 12px;"
+        "  border-radius: 2px;"
+        "}"
+        "QDialog#settingsDialog QSlider#setSlider::sub-page:horizontal {"
+        "  background: @accentbg@;"
+        "  border-radius: 2px;"
+        "}"
+        "QDialog#settingsDialog QSlider#setSlider::handle:horizontal {"
+        "  background: @accent@;"
+        "  width: 8px;"
+        "  margin: -5px 0px;"
+        "  border-radius: 3px;"
+        "}"
+        "QDialog#newPlaylist QPlainTextEdit#plUrls {"
+        "  background: @track@;"
+        "  color: @fgstrong@;"
+        "  border: 2px solid @bara4@;"
+        "  border-radius: 6px;"
+        "  padding: 4px 8px;"
+        "  font-size: 14px;"
         "}"
         /* New playlist dialog */
         "QDialog#newPlaylist {"

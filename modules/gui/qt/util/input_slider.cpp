@@ -443,10 +443,13 @@ void SeekSlider::mouseMoveEvent( QMouseEvent *event )
     event->accept();
 }
 
+#include <QSettings>
+
 /* Redesign: frame of the video at the hovered time */
 void SeekSlider::updatePreview( float f_pos )
 {
-    if( b_classic || !THEMIM->getIM()->hasVideo() )
+    if( b_classic || !THEMIM->getIM()->hasVideo() ||
+        !getSettings()->value( "Redesign/SeekPreview", true ).toBool() )
     {
         mTimeTooltip->setPreview( false );
         return;

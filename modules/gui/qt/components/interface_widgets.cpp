@@ -34,6 +34,9 @@
 #include "util/customwidgets.hpp"               // qtEventToVLCKey, QVLCStackedWidget
 
 #include "menus.hpp"             /* Popup menu on bgWidget */
+#include "util/redesign.hpp"     /* music mode colors */
+
+#include <QPainterPath>
 
 #include <QDate>
 #include <QLabel>
@@ -145,6 +148,7 @@ bool VideoWidget::request( struct vout_window_t *p_wnd )
     layout->addWidget( stable );
 
     sync();
+    updateCorners();
     p_window = p_wnd;
 
     p_wnd->type = p_intf->p_sys->voutWindowType;
@@ -274,9 +278,29 @@ bool VideoWidget::nativeEventFilter(const QByteArray &eventType, void *message, 
     return false;
 }
 
+/* Redesign: rounded corners in a window, square in fullscreen. The video
+ * output draws in a native child window: its region clips it. */
+void VideoWidget::updateCorners()
+{
+    if( !stable )
+        return;
+    QWidget *win = window();
+    if( !win || ( win->windowState() & Qt::WindowFullScreen ) || width() < 40 || height() < 40 )
+    {
+        stable->clearMask();
+        return;
+    }
+    QPainterPath path;
+    path.addRoundedRect( QRectF( 0, 0, width(), height() ), 12, 12 );
+    stable->setMask( QRegion( path.toFillPolygon().toPolygon() ) );
+}
+
 void VideoWidget::resizeEvent( QResizeEvent *event )
 {
     QWidget::resizeEvent( event );
+    updateCorners();
+    /* the window state may change after the resize (fullscreen) */
+    QTimer::singleShot( 0, this, &VideoWidget::updateCorners );
 
     if ( p_intf->p_sys->voutWindowType == VOUT_WINDOW_TYPE_XID ||
         p_intf->p_sys->voutWindowType == VOUT_WINDOW_TYPE_HWND )
@@ -406,7 +430,7 @@ void VideoWidget::release( bool forced )
  **********************************************************************/
 
 BackgroundWidget::BackgroundWidget( intf_thread_t *_p_i )
-    :QWidget( NULL ), p_intf( _p_i ), b_expandPixmap( false ), b_withart( true )
+    :QWidget( NULL ), p_intf( _p_i ), b_expandPixmap( false ), b_withart( true ), b_musicMode( false )
 {
     /* A dark background */
     setAutoFillBackground( true );
@@ -433,6 +457,105 @@ BackgroundWidget::BackgroundWidget( intf_thread_t *_p_i )
              this, &BackgroundWidget::updateArt );
     connect( THEMIM->getIM(), &InputManager::nameChanged,
              this, &BackgroundWidget::titleUpdated );
+    connect( THEMIM->getIM(), &InputManager::nameChanged,
+             this, &BackgroundWidget::updateMusicTitle );
+    connect( THEMIM->getIM(), QOverload<input_item_t *>::of( &InputManager::metaChanged ),
+             this, &BackgroundWidget::updateMusicTitle );
+}
+
+/* "title - artist", as in the Figma music player */
+void BackgroundWidget::updateMusicTitle()
+{
+    QString text;
+    input_item_t *p_item = THEMIM->currentInputItem();
+    if( p_item )
+    {
+        char *psz_title = input_item_GetTitleFbName( p_item );
+        char *psz_artist = input_item_GetArtist( p_item );
+        text = qfu( psz_title );
+        if( psz_artist && *psz_artist )
+            text += " - " + qfu( psz_artist );
+        free( psz_title );
+        free( psz_artist );
+    }
+    if( text != musicTitle )
+    {
+        musicTitle = text;
+        update();
+    }
+}
+
+void BackgroundWidget::paintMusic( QPainter &painter )
+{
+    painter.setRenderHint( QPainter::Antialiasing );
+    painter.setRenderHint( QPainter::SmoothPixmapTransform );
+    painter.fillRect( rect(), Redesign::BgB2 );
+
+    const QPixmap art = pixmapUrl != defaultArt ? QPixmap( pixmapUrl ) : QPixmap();
+
+    /* The cover, enlarged and blurred, fills the background (a tiny copy
+     * scaled up is blurry enough and costs nothing) */
+    if( !art.isNull() )
+    {
+        const QString key = pixmapUrl + QString( "@%1x%2" ).arg( width() ).arg( height() );
+        if( key != blurredKey )
+        {
+            const QImage tiny = art.toImage().scaled( 24, 24, Qt::IgnoreAspectRatio, Qt::SmoothTransformation );
+            const QImage smooth = tiny.scaled( 96, 96, Qt::IgnoreAspectRatio, Qt::SmoothTransformation );
+            blurred = QPixmap::fromImage( smooth.scaled( size(), Qt::KeepAspectRatioByExpanding,
+                                                         Qt::SmoothTransformation ) );
+            blurredKey = key;
+        }
+        painter.save();
+        painter.setOpacity( painter.opacity() * 0.45 );
+        painter.drawPixmap( ( width() - blurred.width() ) / 2, ( height() - blurred.height() ) / 2, blurred );
+        painter.restore();
+    }
+    /* darker towards the edges */
+    QRadialGradient vignette( rect().center(), qMax( width(), height() ) * 0.7 );
+    vignette.setColorAt( 0.0, QColor( 0, 0, 0, 40 ) );
+    vignette.setColorAt( 1.0, QColor( 0, 0, 0, 220 ) );
+    painter.fillRect( rect(), vignette );
+
+    /* Square cover in the middle, the title under it */
+    QFont font = painter.font();
+    font.setPixelSize( qBound( 14, height() / 36, 22 ) );
+    painter.setFont( font );
+    const int textHeight = musicTitle.isEmpty() ? 0 : QFontMetrics( font ).height() + 32;
+    const int side = qMax( 0, qMin( qMin( width() - 80, height() - textHeight - 80 ), 720 ) );
+    const QRect cover( ( width() - side ) / 2, ( height() - side - textHeight ) / 2, side, side );
+    if( side > 0 )
+    {
+        QPainterPath clip;
+        clip.addRoundedRect( QRectF( cover ), 14, 14 );
+        if( !art.isNull() )
+        {
+            const QPixmap scaled = art.scaled( cover.size() * devicePixelRatioF(), Qt::KeepAspectRatioByExpanding,
+                                               Qt::SmoothTransformation );
+            painter.save();
+            painter.setClipPath( clip );
+            painter.drawPixmap( QRectF( cover ), scaled,
+                                QRectF( ( scaled.width() - cover.width() * devicePixelRatioF() ) / 2,
+                                        ( scaled.height() - cover.height() * devicePixelRatioF() ) / 2,
+                                        cover.width() * devicePixelRatioF(), cover.height() * devicePixelRatioF() ) );
+            painter.restore();
+        }
+        else
+        {
+            /* no cover: a card with a note */
+            painter.fillPath( clip, Redesign::BgA3 );
+            const int icon = qMin( 96, side / 3 );
+            QIcon( ":/redesign/lib-music.svg" ).paint( &painter,
+                QRect( cover.center().x() - icon / 2, cover.center().y() - icon / 2, icon, icon ) );
+        }
+    }
+    if( !musicTitle.isEmpty() )
+    {
+        painter.setPen( Redesign::FgA1 );
+        const QRect textRect( 20, cover.bottom() + 24, width() - 40, textHeight - 24 );
+        painter.drawText( textRect, Qt::AlignHCenter | Qt::AlignTop,
+                          QFontMetrics( font ).elidedText( musicTitle, Qt::ElideRight, textRect.width() ) );
+    }
 }
 
 void BackgroundWidget::updateArt( const QString& url )
@@ -480,6 +603,14 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
     {
         /* we just want background autofill */
         QWidget::paintEvent( e );
+        return;
+    }
+
+    if( b_musicMode && THEMIM->getInput() )
+    {
+        QPainter painter( this );
+        painter.setOpacity( property( "opacity" ).toFloat() );
+        paintMusic( painter );
         return;
     }
 

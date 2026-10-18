@@ -29,6 +29,7 @@
 #define VLC_MODULE_LICENSE VLC_LICENSE_GPL_2_PLUS
 
 #include <QApplication>
+#include <QFontDatabase>
 #include <QStyleFactory>
 #include <QDate>
 #include <QMutex>
@@ -680,6 +681,15 @@ static void *ThreadPlatform( void *obj, char *platform_name )
     QString s_style = getSettings()->value( "MainWindow/QtStyle", "" ).toString();
     if (!s_style.isEmpty())
         QApplication::setStyle( s_style );
+
+    /* Redesign: the Inter typeface of the Figma file, embedded (SIL OFL) */
+    if( QFontDatabase::addApplicationFont( ":/fonts/Inter-Regular.ttf" ) >= 0 )
+    {
+        QFontDatabase::addApplicationFont( ":/fonts/Inter-SemiBold.ttf" );
+        QFont font = app.font();
+        font.setFamily( "Inter" );
+        app.setFont( font );
+    }
 
     // Apply dark palette only if dark palette is enabled
     if (isDarkPaletteEnabled(p_intf))

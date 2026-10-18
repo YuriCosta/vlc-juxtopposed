@@ -179,6 +179,8 @@ protected:
     QWidget *createWidget( buttonType_e, int options = WIDGET_NORMAL );
 private:
     static void setupButton( QAbstractButton * );
+    /* checked (orange) while the tracks panel shows its tab */
+    void linkTracksButton( QAbstractButton *, int tab );
     QFrame *discFrame();
     QFrame *telexFrame();
     void applyAttributes( QToolButton *, bool b_flat, bool b_big );

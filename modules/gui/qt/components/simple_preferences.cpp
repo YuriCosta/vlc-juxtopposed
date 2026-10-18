@@ -142,6 +142,13 @@ static struct {
     { "wa",    "Walon" }
 };
 
+#ifdef _WIN32
+/* Also offered by the redesigned settings (dialogs/settings_dialog.cpp) */
+int SPrefsLanguageCount() { return ARRAY_SIZE( language_map ); }
+const char *SPrefsLanguageIso( int i ) { return language_map[i].iso; }
+const char *SPrefsLanguageName( int i ) { return language_map[i].name; }
+#endif
+
 static int getDefaultAudioVolume(vlc_object_t *obj, const char *aout)
 {
     if (!strcmp(aout, "") || !strcmp(aout, "any"))

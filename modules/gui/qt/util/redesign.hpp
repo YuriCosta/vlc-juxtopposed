@@ -22,6 +22,9 @@
 #include <QColor>
 #include <QString>
 
+class QIcon;
+class QPixmap;
+class QSize;
 class QTimer;
 class QWidget;
 
@@ -59,6 +62,11 @@ namespace Redesign
 
     /* Dark native title bar for dialogs (Windows 10 1809+, no-op elsewhere) */
     void darkTitleBar( QWidget *window );
+
+    /* The icon in another color (keeps its alpha) */
+    QPixmap tinted( const QPixmap &, const QColor & );
+    /* Figma "state=active": the icon turns orange while its button is checked */
+    QIcon activeIcon( const QIcon &, const QSize & );
 }
 
 #endif

@@ -596,7 +596,21 @@ void LibrarySidebar::addRailButton( int id, const QString &icon, const QString &
     button->setObjectName( "libraryRailButton" );
     button->setText( label );
     button->setFixedSize( 30, 30 );
+    /* the section shown is orange; network and add open dialogs */
+    if( id != SECTION_NETWORK && id != SECTION_ADD )
+    {
+        button->setCheckable( true );
+        button->setIcon( Redesign::activeIcon( QIcon( icon ), QSize( 24, 24 ) ) );
+    }
     rail->addButton( button, id );
+}
+
+void LibrarySidebar::markSection( int id )
+{
+    rail->setExclusive( false );
+    foreach( QAbstractButton *b, rail->buttons() )
+        b->setChecked( rail->id( b ) == id );
+    rail->setExclusive( true );
 }
 
 /* The expanded library takes the whole window, the video becomes a mini player */
@@ -695,6 +709,9 @@ void LibrarySidebar::showCurrentMediaFolder()
     const QString media = currentMediaPath( p_intf );
     showFolder( media.isEmpty() ? ( currentPath.isEmpty() ? QDir::homePath() : currentPath )
                                 : QFileInfo( media ).absolutePath() );
+    /* next to the video, Home is the folder of the media */
+    if( rail->checkedId() < 0 && !b_expanded )
+        markSection( SECTION_HOME );
     if( !media.isEmpty() )
     {
         const QModelIndex index = proxy->mapFromSource( fsModel->index( media ) );
@@ -724,6 +741,15 @@ void LibrarySidebar::showFolder( const QString &path, bool b_record )
     view->setDragDropMode( QAbstractItemView::DragOnly );
     pages->setCurrentWidget( view );
 
+    /* the Videos and Music sections are the folders of the same name */
+    auto inside = [&folder]( QStandardPaths::StandardLocation location ) {
+        const QString base = QDir::cleanPath( QStandardPaths::writableLocation( location ) );
+        return !base.isEmpty() && ( folder.compare( base, Qt::CaseInsensitive ) == 0 ||
+                                    folder.startsWith( base + "/", Qt::CaseInsensitive ) );
+    };
+    markSection( inside( QStandardPaths::MoviesLocation ) ? SECTION_VIDEOS
+               : inside( QStandardPaths::MusicLocation ) ? SECTION_MUSIC : -1 );
+
     updateBreadcrumb();
     updateHistoryButtons();
     updateCount();
@@ -734,6 +760,7 @@ void LibrarySidebar::showRecent()
     if( location() != PAGE_RECENT )
         pushHistory();
     currentPage = PAGE_RECENT;
+    markSection( SECTION_RECENT );
 
     recentModel->clear();
     foreach( const QString &mrl, RecentsMRL::getInstance( p_intf )->recentList() )
@@ -761,6 +788,7 @@ void LibrarySidebar::showHome()
     if( location() != PAGE_HOME )
         pushHistory();
     currentPage = PAGE_HOME;
+    markSection( SECTION_HOME );
     home->refresh();
     pages->setCurrentWidget( home );
 
@@ -964,6 +992,7 @@ void LibrarySidebar::showPlaylists()
     if( location() != PAGE_PLAYLISTS )
         pushHistory();
     currentPage = PAGE_PLAYLISTS;
+    markSection( SECTION_PLAYLISTS );
 
     playlistModel->clear();
     QStandardItem *create = new QStandardItem( qtr( "New playlist" ) );
@@ -1011,6 +1040,7 @@ void LibrarySidebar::showPlaylist( const QString &file )
     if( location() != page )
         pushHistory();
     currentPage = page;
+    markSection( SECTION_PLAYLISTS );
 
     recentModel->clear();
     const QStringList tracks = Playlists::read( file ).tracks;

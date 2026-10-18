@@ -43,6 +43,7 @@
 #include "components/overlay_panels.hpp"            /* Tracks and settings panels */
 
 #include "util/input_slider.hpp"                         /* SeekSlider */
+#include "util/redesign.hpp"                             /* activeIcon */
 #include "util/customwidgets.hpp"                       /* qEventToKey */
 
 #include "adapters/seekpoints.hpp"
@@ -105,6 +106,17 @@ void AbstractController::setStatus( int status )
 }
 
 /* Generic button setup */
+void AbstractController::linkTracksButton( QAbstractButton *button, int tab )
+{
+    MainInterface *mi = p_intf->p_sys->p_mi;
+    if( !mi || button->property( "tracksLinked" ).toBool() )
+        return;
+    button->setProperty( "tracksLinked", true );
+    connect( mi, &MainInterface::tracksPanelVisibilityChanged, button, [mi, button, tab]( bool b_visible ) {
+        button->setChecked( b_visible && mi->tracksPanelTab() == tab );
+    } );
+}
+
 void AbstractController::setupButton( QAbstractButton *aButton )
 {
     static QSizePolicy sizePolicy( QSizePolicy::Fixed, QSizePolicy::Fixed );
@@ -329,7 +341,14 @@ QWidget *AbstractController::createWidget( buttonType_e button, int options )
         setupButton( audioButton );
         audioButton->setProperty( "panelToggle", true );
         BUTTON_SET_BAR( audioButton );
-        connect( audioButton, &QToolButton::clicked, this, [this]() {
+        audioButton->setCheckable( true );
+        audioButton->setIcon( Redesign::activeIcon( audioButton->icon(), QSize( 24, 24 ) ) );
+        /* the main interface is not known yet while it builds its controls */
+        QTimer::singleShot( 0, audioButton, [this, audioButton]() {
+            linkTracksButton( audioButton, TracksPanel::TAB_AUDIO );
+        } );
+        connect( audioButton, &QToolButton::clicked, this, [this, audioButton]() {
+            linkTracksButton( audioButton, TracksPanel::TAB_AUDIO );
             if( p_intf->p_sys->p_mi )
                 p_intf->p_sys->p_mi->toggleTracksPanel( TracksPanel::TAB_AUDIO );
         } );
@@ -341,7 +360,13 @@ QWidget *AbstractController::createWidget( buttonType_e button, int options )
         setupButton( subButton );
         subButton->setProperty( "panelToggle", true );
         BUTTON_SET_BAR( subButton );
-        connect( subButton, &QToolButton::clicked, this, [this]() {
+        subButton->setCheckable( true );
+        subButton->setIcon( Redesign::activeIcon( subButton->icon(), QSize( 24, 24 ) ) );
+        QTimer::singleShot( 0, subButton, [this, subButton]() {
+            linkTracksButton( subButton, TracksPanel::TAB_SUBTITLES );
+        } );
+        connect( subButton, &QToolButton::clicked, this, [this, subButton]() {
+            linkTracksButton( subButton, TracksPanel::TAB_SUBTITLES );
             if( p_intf->p_sys->p_mi )
                 p_intf->p_sys->p_mi->toggleTracksPanel( TracksPanel::TAB_SUBTITLES );
         } );
@@ -355,6 +380,7 @@ QWidget *AbstractController::createWidget( buttonType_e button, int options )
         settingsButton->setProperty( "panelToggle", true );
         BUTTON_SET_BAR( settingsButton );
         settingsButton->setCheckable( true );
+        settingsButton->setIcon( Redesign::activeIcon( settingsButton->icon(), QSize( 24, 24 ) ) );
         connect( settingsButton, &QToolButton::clicked, this, [this, settingsButton]() {
             MainInterface *mi = p_intf->p_sys->p_mi;
             if( !mi )

@@ -45,8 +45,7 @@
 #include "components/library_sidebar.hpp"       // LibrarySidebar
 #include "util/thumbnailer.hpp"                 // Thumbnailer::killInstance
 #include "util/seek_preview.hpp"                // SeekPreviewer::killInstance
-#include "dialogs/add_subtitles.hpp"            // remembered subtitles
-#include "components/playlist/playlist.hpp"     // plWidget
+#include "dialogs/add_subtitles.hpp"            // remembered subtitles#include "components/playlist/playlist.hpp"     // plWidget
 #include "dialogs/firstrun.hpp"                 // First Run
 #include "dialogs/playlist.hpp"                 // PlaylistDialog
 
@@ -538,6 +537,7 @@ void MainInterface::createMainWidget( QSettings *creationSettings )
         bgWidget = new BackgroundWidget( p_intf );
 
     stackCentralW->addWidget( bgWidget );
+    bgWidget->setMusicMode( true );
     if ( !var_InheritBool( p_intf, "qt-bgcone" ) )
         bgWidget->setWithArt( false );
     else
@@ -792,6 +792,13 @@ void MainInterface::toggleTracksPanel( int tab )
         tracksPanel->showTab( tab );
         tracksPanel->show();
     }
+    /* switching tabs keeps the panel visible: the buttons still follow */
+    emit tracksPanelVisibilityChanged( tracksPanel->isVisible() );
+}
+
+int MainInterface::tracksPanelTab() const
+{
+    return tracksPanel ? tracksPanel->currentTab() : -1;
 }
 
 void MainInterface::toggleSettingsPanel( int tab )

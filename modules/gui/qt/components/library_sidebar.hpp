@@ -85,6 +85,7 @@ private:
     QToolButton *createButton( const QString &icon, const QString &tooltip, int size = 24 );
     void addRailButton( int id, const QString &icon, const QString &label );
     void selectSection( int id );
+    void markSection( int id );
     void setGridMode( bool );
     void updateBreadcrumb();
     void updateHistoryButtons();

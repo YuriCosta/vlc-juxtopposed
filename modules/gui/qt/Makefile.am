@@ -139,6 +139,8 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/util/seek_preview.cpp gui/qt/util/seek_preview.hpp \
 	gui/qt/dialogs/add_subtitles.cpp gui/qt/dialogs/add_subtitles.hpp \
 	gui/qt/dialogs/new_playlist.cpp gui/qt/dialogs/new_playlist.hpp \
+	gui/qt/dialogs/settings_dialog.cpp gui/qt/dialogs/settings_dialog.hpp \
+	gui/qt/dialogs/network_stream.cpp gui/qt/dialogs/network_stream.hpp \
 	gui/qt/util/playlists.cpp gui/qt/util/playlists.hpp \
 	gui/qt/util/timetooltip.cpp gui/qt/util/timetooltip.hpp \
 	gui/qt/util/customwidgets.cpp gui/qt/util/customwidgets.hpp \
@@ -227,6 +229,8 @@ nodist_libqt_plugin_la_SOURCES = \
 	gui/qt/util/seek_preview.moc.cpp \
 	gui/qt/dialogs/add_subtitles.moc.cpp \
 	gui/qt/dialogs/new_playlist.moc.cpp \
+	gui/qt/dialogs/settings_dialog.moc.cpp \
+	gui/qt/dialogs/network_stream.moc.cpp \
 	gui/qt/components/controller_widget.moc.cpp \
 	gui/qt/components/epg/EPGChannels.moc.cpp \
 	gui/qt/components/epg/EPGProgram.moc.cpp \
@@ -477,6 +481,20 @@ libqt_plugin_la_RES = \
 	gui/qt/pixmaps/redesign/lib-recent.svg \
 	gui/qt/pixmaps/redesign/lib-add.svg \
 	gui/qt/pixmaps/redesign/lib-add-small.svg \
+	gui/qt/pixmaps/redesign/set-general.svg \
+	gui/qt/pixmaps/redesign/set-interface.svg \
+	gui/qt/pixmaps/redesign/set-privacy.svg \
+	gui/qt/pixmaps/redesign/set-controls.svg \
+	gui/qt/pixmaps/redesign/set-playback.svg \
+	gui/qt/pixmaps/redesign/set-audio.svg \
+	gui/qt/pixmaps/redesign/set-subtitles.svg \
+	gui/qt/pixmaps/redesign/set-library.svg \
+	gui/qt/pixmaps/redesign/set-network.svg \
+	gui/qt/pixmaps/redesign/set-recording.svg \
+	gui/qt/pixmaps/redesign/set-extensions.svg \
+	gui/qt/pixmaps/redesign/info.svg \
+	gui/qt/fonts/Inter-Regular.ttf \
+	gui/qt/fonts/Inter-SemiBold.ttf \
 	gui/qt/pixmaps/redesign/arrow-left.svg \
 	gui/qt/pixmaps/redesign/arrow-right.svg \
 	gui/qt/pixmaps/redesign/lib-more.svg \

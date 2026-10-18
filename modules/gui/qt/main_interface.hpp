@@ -105,6 +105,7 @@ public:
     bool isInterfaceAlwaysOnTop() { return b_interfaceOnTop; }
     bool isQueuePanelVisible() const;
     bool isMinimalView() const { return b_minimalView; }
+    int tracksPanelTab() const;
     StandardPLPanel* getPlaylistView();
 
 protected:

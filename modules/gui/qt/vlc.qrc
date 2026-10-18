@@ -159,6 +159,10 @@
         <file alias="addon_red.svg">pixmaps/addons/addon_red.svg</file>
         <file alias="addon_yellow.svg">pixmaps/addons/addon_yellow.svg</file>
     </qresource>
+    <qresource prefix="/fonts">
+        <file alias="Inter-Regular.ttf">fonts/Inter-Regular.ttf</file>
+        <file alias="Inter-SemiBold.ttf">fonts/Inter-SemiBold.ttf</file>
+    </qresource>
     <qresource prefix="/redesign">
         <file alias="cone.svg">pixmaps/redesign/cone.svg</file>
         <file alias="more.svg">pixmaps/redesign/more.svg</file>
@@ -185,6 +189,18 @@
         <file alias="lib-recent.svg">pixmaps/redesign/lib-recent.svg</file>
         <file alias="lib-add.svg">pixmaps/redesign/lib-add.svg</file>
         <file alias="lib-add-small.svg">pixmaps/redesign/lib-add-small.svg</file>
+        <file alias="set-general.svg">pixmaps/redesign/set-general.svg</file>
+        <file alias="set-interface.svg">pixmaps/redesign/set-interface.svg</file>
+        <file alias="set-privacy.svg">pixmaps/redesign/set-privacy.svg</file>
+        <file alias="set-controls.svg">pixmaps/redesign/set-controls.svg</file>
+        <file alias="set-playback.svg">pixmaps/redesign/set-playback.svg</file>
+        <file alias="set-audio.svg">pixmaps/redesign/set-audio.svg</file>
+        <file alias="set-subtitles.svg">pixmaps/redesign/set-subtitles.svg</file>
+        <file alias="set-library.svg">pixmaps/redesign/set-library.svg</file>
+        <file alias="set-network.svg">pixmaps/redesign/set-network.svg</file>
+        <file alias="set-recording.svg">pixmaps/redesign/set-recording.svg</file>
+        <file alias="set-extensions.svg">pixmaps/redesign/set-extensions.svg</file>
+        <file alias="info.svg">pixmaps/redesign/info.svg</file>
         <file alias="arrow-left.svg">pixmaps/redesign/arrow-left.svg</file>
         <file alias="arrow-right.svg">pixmaps/redesign/arrow-right.svg</file>
         <file alias="lib-more.svg">pixmaps/redesign/lib-more.svg</file>

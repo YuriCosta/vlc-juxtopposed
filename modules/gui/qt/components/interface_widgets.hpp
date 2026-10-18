@@ -92,6 +92,7 @@ private:
     bool enable_mouse_events;
 
     void reportSize();
+    void updateCorners();
 
 signals:
     void sizeChanged( int, int );
@@ -108,11 +109,19 @@ public:
     BackgroundWidget( intf_thread_t * );
     void setExpandstoHeight( bool b_expand ) { b_expandPixmap = b_expand; }
     void setWithArt( bool b_withart_ ) { b_withart = b_withart_; };
+    /* Redesign "Player - Music": the cover over a blurred copy of itself */
+    void setMusicMode( bool b_music ) { b_musicMode = b_music; }
 private:
     intf_thread_t *p_intf;
     QString pixmapUrl;
     bool b_expandPixmap;
     bool b_withart;
+    bool b_musicMode;
+    QString musicTitle;
+    QPixmap blurred;
+    QString blurredKey;
+    void paintMusic( QPainter & );
+    void updateMusicTitle();
     QPropertyAnimation *fadeAnimation;
     void contextMenuEvent( QContextMenuEvent *event ) Q_DECL_OVERRIDE;
 protected:

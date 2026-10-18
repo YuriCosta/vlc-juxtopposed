@@ -209,7 +209,10 @@ QueuePanel::QueuePanel( intf_thread_t *_p_intf, QWidget *parent, QWidget *_area 
         QToolButton *tab = new QToolButton;
         tab->setObjectName( "queueTab" );
         tab->setProperty( "active", tabs->buttons().isEmpty() );
-        tab->setIcon( QIcon( t.icon ) );
+        /* the icon of the tab shown is orange */
+        tab->setCheckable( true );
+        tab->setChecked( tabs->buttons().isEmpty() );
+        tab->setIcon( Redesign::activeIcon( QIcon( t.icon ), QSize( 20, 20 ) ) );
         tab->setIconSize( QSize( 20, 20 ) );
         tab->setText( qtr( t.text ) );
         tab->setToolButtonStyle( Qt::ToolButtonTextBesideIcon );
@@ -244,12 +247,14 @@ QueuePanel::QueuePanel( intf_thread_t *_p_intf, QWidget *parent, QWidget *_area 
 
     repeatButton = createButton( ":/redesign/queue-repeat.svg", qtr( "Repeat" ) );
     repeatButton->setCheckable( true );
+    repeatButton->setIcon( Redesign::activeIcon( repeatButton->icon(), QSize( 24, 24 ) ) );
     connect( repeatButton, &QToolButton::clicked, THEMIM, &MainInputManager::loopRepeatLoopStatus );
     connect( THEMIM, &MainInputManager::repeatLoopChanged, this, &QueuePanel::setRepeat );
     header->addWidget( repeatButton );
 
     shuffleButton = createButton( ":/redesign/queue-shuffle.svg", qtr( "Random" ) );
     shuffleButton->setCheckable( true );
+    shuffleButton->setIcon( Redesign::activeIcon( shuffleButton->icon(), QSize( 24, 24 ) ) );
     connect( shuffleButton, &QToolButton::clicked, THEMIM, &MainInputManager::toggleRandom );
     connect( THEMIM, &MainInputManager::randomChanged, this, &QueuePanel::setRandom );
     header->addWidget( shuffleButton );
@@ -526,6 +531,7 @@ void QueuePanel::showTab( int id )
     foreach( QAbstractButton *tab, tabs->buttons() )
     {
         tab->setProperty( "active", tabs->id( tab ) == id );
+        tab->setChecked( tabs->id( tab ) == id );
         tab->style()->unpolish( tab );
         tab->style()->polish( tab );
     }

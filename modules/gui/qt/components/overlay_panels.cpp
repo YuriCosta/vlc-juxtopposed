@@ -198,7 +198,7 @@ QVBoxLayout *OverlayPanel::addTab( const QString &icon, const QString &text )
 {
     QToolButton *tab = new QToolButton;
     tab->setObjectName( "panelTab" );
-    tab->setIcon( QIcon( icon ) );
+    tab->setIcon( Redesign::activeIcon( QIcon( icon ), QSize( 20, 20 ) ) );
     tab->setIconSize( QSize( 20, 20 ) );
     tab->setText( text );
     tab->setCheckable( true );

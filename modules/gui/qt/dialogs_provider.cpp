@@ -57,6 +57,8 @@
 #include "dialogs/external.hpp"
 #include "dialogs/epg.hpp"
 #include "dialogs/errors.hpp"
+#include "dialogs/settings_dialog.hpp"
+#include "dialogs/network_stream.hpp"
 
 #include <QEvent>
 #include <QApplication>
@@ -249,6 +251,12 @@ void DialogsProvider::playlistDialog()
 
 void DialogsProvider::prefsDialog()
 {
+    /* Redesign: the classic preferences stay reachable from the new settings */
+    if( p_intf->p_sys->p_mi )
+    {
+        SettingsDialog::open( p_intf, p_intf->p_sys->p_mi );
+        return;
+    }
     PrefsDialog *p = new PrefsDialog( (QWidget *)p_intf->p_sys->p_mi, p_intf );
     p->toggleVisible();
 }
@@ -456,6 +464,12 @@ void DialogsProvider::openDiscDialog()
 }
 void DialogsProvider::openNetDialog()
 {
+    /* Redesign: links only, the capture and disc tabs keep the classic dialog */
+    if( p_intf->p_sys->p_mi )
+    {
+        NetworkStreamDialog::open( p_intf, p_intf->p_sys->p_mi );
+        return;
+    }
     openDialog( OPEN_NETWORK_TAB );
 }
 void DialogsProvider::openCaptureDialog()
