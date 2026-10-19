@@ -45,7 +45,8 @@
 #include "components/library_sidebar.hpp"       // LibrarySidebar
 #include "util/thumbnailer.hpp"                 // Thumbnailer::killInstance
 #include "util/seek_preview.hpp"                // SeekPreviewer::killInstance
-#include "dialogs/add_subtitles.hpp"            // remembered subtitles#include "components/playlist/playlist.hpp"     // plWidget
+#include "dialogs/add_subtitles.hpp"            // remembered subtitles
+#include "components/playlist/playlist.hpp"     // plWidget
 #include "dialogs/firstrun.hpp"                 // First Run
 #include "dialogs/playlist.hpp"                 // PlaylistDialog
 

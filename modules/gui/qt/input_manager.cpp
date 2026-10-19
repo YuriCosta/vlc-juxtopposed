@@ -992,6 +992,7 @@ void InputManager::AtoBLoop( float, int64_t i_time, int )
 
 MainInputManager::MainInputManager( intf_thread_t *_p_intf )
     : QObject(NULL), p_input( NULL), p_intf( _p_intf ),
+      b_clickToggled( false ), b_discMenus( false ),
       random( VLC_OBJECT(THEPL), "random" ),
       repeat( VLC_OBJECT(THEPL), "repeat" ), loop( VLC_OBJECT(THEPL), "loop" ),
       volume( VLC_OBJECT(THEPL), "volume" ), mute( VLC_OBJECT(THEPL), "mute" )
@@ -1027,6 +1028,28 @@ MainInputManager::MainInputManager( intf_thread_t *_p_intf )
         QTimer::singleShot( 200, this, [this, path]() { playNeighbourInFolder( +1, path ); } );
     } );
 
+    /* Redesign: a click on the video plays or pauses. A double click also
+     * toggles fullscreen (in the video output): the pause of its first click
+     * is then taken back */
+    connect( im, &InputManager::voutListChanged, this, &MainInputManager::watchVideoClicks,
+             Qt::DirectConnection );
+    connect( im, &InputManager::titleChanged, this, [this]( bool b_menus ) { b_discMenus = b_menus; } );
+    connect( this, &MainInputManager::videoClicked, this, [this]() {
+        b_clickToggled = false;
+        /* DVD menus are clicked */
+        if( !clickToPause( p_intf ) || !p_input ||
+            ( b_discMenus && var_InheritBool( p_intf, "mouse-events" ) ) )
+            return;
+        togglePlayPause();
+        b_clickToggled = true;
+        lastClick.start();
+    }, Qt::QueuedConnection );
+    connect( this, &MainInputManager::videoFullscreenToggled, this, [this]() {
+        if( b_clickToggled && lastClick.elapsed() < QApplication::doubleClickInterval() + 200 )
+            togglePlayPause();
+        b_clickToggled = false;
+    }, Qt::QueuedConnection );
+
     /* Core Callbacks to widget */
     random.addCallback( this, SLOT(notifyRandom(bool)) );
     repeat.addCallback( this, SLOT(notifyRepeatLoop(bool)) );
@@ -1041,6 +1064,7 @@ MainInputManager::MainInputManager( intf_thread_t *_p_intf )
 
 MainInputManager::~MainInputManager()
 {
+    watchVideoClicks( NULL, 0 );
     if( p_input )
     {
        vlc_object_release( p_input );
@@ -1160,6 +1184,52 @@ bool MainInputManager::autoNextInFolder( intf_thread_t *p_intf )
 void MainInputManager::setAutoNextInFolder( intf_thread_t *p_intf, bool b_enable )
 {
     getSettings()->setValue( "Redesign/AutoNextInFolder", b_enable );
+}
+
+bool MainInputManager::clickToPause( intf_thread_t *p_intf )
+{
+    return getSettings()->value( "Redesign/ClickToPause", true ).toBool();
+}
+
+void MainInputManager::setClickToPause( intf_thread_t *p_intf, bool b_enable )
+{
+    getSettings()->setValue( "Redesign/ClickToPause", b_enable );
+}
+
+/* Follows the clicks on the current video outputs (the list is only valid
+ * during the call) */
+void MainInputManager::watchVideoClicks( vout_thread_t **pp_vout, int i_vout )
+{
+    foreach( vout_thread_t *p_vout, clickVouts )
+    {
+        var_DelCallback( p_vout, "mouse-clicked", VideoEvent, this );
+        var_DelCallback( p_vout, "fullscreen", VideoEvent, this );
+        vlc_object_release( p_vout );
+    }
+    clickVouts.clear();
+    for( int i = 0; i < i_vout; i++ )
+    {
+        vout_thread_t *p_vout = (vout_thread_t *)vlc_object_hold( pp_vout[i] );
+        var_AddCallback( p_vout, "mouse-clicked", VideoEvent, this );
+        var_AddCallback( p_vout, "fullscreen", VideoEvent, this );
+        clickVouts << p_vout;
+    }
+}
+
+/* Video output thread */
+int MainInputManager::VideoEvent( vlc_object_t *p_this, const char *psz_var,
+                                  vlc_value_t oldval, vlc_value_t newval, void *param )
+{
+    MainInputManager *mim = static_cast<MainInputManager *>( param );
+    if( !strcmp( psz_var, "fullscreen" ) )
+    {
+        if( oldval.b_bool != newval.b_bool )
+            emit mim->videoFullscreenToggled();
+    }
+    /* 360° videos are dragged around */
+    else if( !var_GetBool( p_this, "viewpoint-changeable" ) )
+        emit mim->videoClicked();
+    return VLC_SUCCESS;
 }
 
 bool MainInputManager::playNeighbourInFolder( int direction, const QString &fromPath )

@@ -37,6 +37,8 @@
 
 #include <QObject>
 #include <QEvent>
+#include <QElapsedTimer>
+#include <QVector>
 class QSignalMapper;
 
 enum { NORMAL,    /* loop: 0, repeat: 0 */
@@ -285,6 +287,9 @@ public:
     /* Redesign: play the next file of the folder when a lone media ends */
     static bool autoNextInFolder( intf_thread_t * );
     static void setAutoNextInFolder( intf_thread_t *, bool );
+    /* Redesign: a click on the video plays or pauses */
+    static bool clickToPause( intf_thread_t * );
+    static void setClickToPause( intf_thread_t *, bool );
     // Probe for initial input. Doing this from the constructor would cause
     // the getInstance to call itself recursively from the inputChangedHandler
     void probeCurrentInput();
@@ -295,6 +300,7 @@ protected:
 private:
     MainInputManager( intf_thread_t * );
     bool playNeighbourInFolder( int direction, const QString &fromPath = QString() );
+    void watchVideoClicks( vout_thread_t **, int );
     virtual ~MainInputManager();
 
     void customEvent( QEvent * ) override;
@@ -306,7 +312,15 @@ private:
     QVLCFloat volume;
     QVLCBool mute;
 
+    /* click to pause */
+    QVector<vout_thread_t *> clickVouts;
+    QElapsedTimer lastClick;
+    bool b_clickToggled;
+    bool b_discMenus;
+
 private:
+    static int VideoEvent( vlc_object_t *, const char *,
+                           vlc_value_t, vlc_value_t, void * );
     static int ItemChanged( vlc_object_t *, const char *,
                             vlc_value_t, vlc_value_t, void * );
     static int LeafToParent( vlc_object_t *, const char *,
@@ -349,6 +363,9 @@ signals:
     void randomChanged( bool );
     void repeatLoopChanged( int );
     void leafBecameParent( int );
+    /* from the video output threads */
+    void videoClicked();
+    void videoFullscreenToggled();
 };
 
 #endif

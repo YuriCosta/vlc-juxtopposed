@@ -22,6 +22,7 @@
 
 #include "dialogs/settings_dialog.hpp"
 #include "dialogs/preferences.hpp"
+#include "dialogs/shortcuts_dialog.hpp"
 #include "dialogs_provider.hpp"
 #include "input_manager.hpp"
 #include "recents.hpp"
@@ -1014,9 +1015,14 @@ SettingsPage *SettingsDialog::controlsPage()
 
     page->section( qtr( "Keyboard Shortcuts" ) );
     page->button( qtr( "Edit keyboard shortcuts" ), qtr( "Edit" ), [this]() {
-        PrefsDialog *prefs = new PrefsDialog( parentWidget(), p_intf );
-        prefs->toggleVisible();
-    }, qtr( "Opens the classic preferences: shortcuts are in \"Hotkeys\"." ) );
+        ShortcutsDialog::open( p_intf, this );
+    } );
+    page->button( qtr( "Reset all shortcuts" ), qtr( "Reset" ), [this]() {
+        if( QMessageBox::question( this, qtr( "Reset all shortcuts" ),
+                qtr( "Every keyboard shortcut will go back to its default key. Continue?" ) ) != QMessageBox::Yes )
+            return;
+        ShortcutsDialog::resetAll( p_intf );
+    }, qtr( "Used the next time VLC starts." ) );
 
     page->section( qtr( "Skip Amounts" ) );
     page->integer( qtr( "Very short skip" ), "extrashort-jump-size", " s", 1, 3600 );
@@ -1025,6 +1031,15 @@ SettingsPage *SettingsDialog::controlsPage()
     page->integer( qtr( "Long skip" ), "long-jump-size", " s", 1, 3600 );
 
     page->section( qtr( "Mouse" ) );
+    {
+        SettingsPage::Items items;
+        items << qMakePair( qtr( "Play / Pause" ), QVariant( true ) )
+              << qMakePair( qtr( "Nothing" ), QVariant( false ) );
+        intf_thread_t *p_intf = this->p_intf;
+        page->combo( qtr( "Single click on the video" ), items, MainInputManager::clickToPause( p_intf ),
+                     [p_intf]( const QVariant &v ) { MainInputManager::setClickToPause( p_intf, v.toBool() ); },
+                     qtr( "A double click still toggles fullscreen." ) );
+    }
     page->choices( qtr( "Scroll wheel" ), "hotkeys-y-wheel-mode" );
     page->choices( qtr( "Horizontal scroll" ), "hotkeys-x-wheel-mode" );
     page->toggle( qtr( "Use the mouse on the video (DVD menus...)" ), "mouse-events" );

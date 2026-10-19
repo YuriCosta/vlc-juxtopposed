@@ -141,6 +141,7 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/dialogs/new_playlist.cpp gui/qt/dialogs/new_playlist.hpp \
 	gui/qt/dialogs/settings_dialog.cpp gui/qt/dialogs/settings_dialog.hpp \
 	gui/qt/dialogs/network_stream.cpp gui/qt/dialogs/network_stream.hpp \
+	gui/qt/dialogs/shortcuts_dialog.cpp gui/qt/dialogs/shortcuts_dialog.hpp \
 	gui/qt/util/playlists.cpp gui/qt/util/playlists.hpp \
 	gui/qt/util/timetooltip.cpp gui/qt/util/timetooltip.hpp \
 	gui/qt/util/customwidgets.cpp gui/qt/util/customwidgets.hpp \
@@ -231,6 +232,7 @@ nodist_libqt_plugin_la_SOURCES = \
 	gui/qt/dialogs/new_playlist.moc.cpp \
 	gui/qt/dialogs/settings_dialog.moc.cpp \
 	gui/qt/dialogs/network_stream.moc.cpp \
+	gui/qt/dialogs/shortcuts_dialog.moc.cpp \
 	gui/qt/components/controller_widget.moc.cpp \
 	gui/qt/components/epg/EPGChannels.moc.cpp \
 	gui/qt/components/epg/EPGProgram.moc.cpp \
@@ -493,6 +495,7 @@ libqt_plugin_la_RES = \
 	gui/qt/pixmaps/redesign/set-recording.svg \
 	gui/qt/pixmaps/redesign/set-extensions.svg \
 	gui/qt/pixmaps/redesign/info.svg \
+	gui/qt/pixmaps/redesign/edit.svg \
 	gui/qt/fonts/Inter-Regular.ttf \
 	gui/qt/fonts/Inter-SemiBold.ttf \
 	gui/qt/pixmaps/redesign/arrow-left.svg \
