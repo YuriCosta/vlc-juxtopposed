@@ -46,6 +46,7 @@
 #include <QPainter>
 #include <QTimer>
 #include <QUrl>
+#include <QFileInfo>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QRandomGenerator>
 
@@ -72,6 +73,7 @@ static inline int qrand() {
 #include <cassert>
 
 #include <vlc_vout.h>
+#include <vlc_interface.h>      /* EXTENSIONS_AUDIO */
 #include <vlc_vout_window.h>
 
 /**********************************************************************
@@ -432,15 +434,15 @@ void VideoWidget::release( bool forced )
 BackgroundWidget::BackgroundWidget( intf_thread_t *_p_i )
     :QWidget( NULL ), p_intf( _p_i ), b_expandPixmap( false ), b_withart( true ), b_musicMode( false )
 {
-    /* A dark background */
+    /* The window background, the cat has a transparent background */
     setAutoFillBackground( true );
     QPalette plt = palette();
-    plt.setColor( QPalette::Active, QPalette::Window , Qt::black );
-    plt.setColor( QPalette::Inactive, QPalette::Window , Qt::black );
+    plt.setColor( QPalette::Active, QPalette::Window , Redesign::BgB1 );
+    plt.setColor( QPalette::Inactive, QPalette::Window , Redesign::BgB1 );
     setPalette( plt );
 
-    /* Init the cone art */
-    updateDefaultArt( ":/logo/vlc128.png" );
+    /* Redesign: the pixel art cat when idle or while a video opens */
+    updateDefaultArt( ":/redesign/idle-cat.png" );
     updateArt( "" );
 
     /* fade in animator */
@@ -456,9 +458,10 @@ BackgroundWidget::BackgroundWidget( intf_thread_t *_p_i )
     connect( THEMIM->getIM(), QOverload<QString>::of(&InputManager::artChanged),
              this, &BackgroundWidget::updateArt );
     connect( THEMIM->getIM(), &InputManager::nameChanged,
-             this, &BackgroundWidget::titleUpdated );
-    connect( THEMIM->getIM(), &InputManager::nameChanged,
              this, &BackgroundWidget::updateMusicTitle );
+    /* the tracks tell audio from video */
+    connect( THEMIM->getIM(), &InputManager::infoChanged,
+             this, QOverload<>::of(&BackgroundWidget::update) );
     connect( THEMIM->getIM(), QOverload<input_item_t *>::of( &InputManager::metaChanged ),
              this, &BackgroundWidget::updateMusicTitle );
 }
@@ -574,21 +577,34 @@ void BackgroundWidget::updateDefaultArt( const QString& url )
     update();
 }
 
-void BackgroundWidget::titleUpdated( const QString& title )
+/* Audio: the music player with the cover. Video, or not known yet, the cat:
+ * the art found for a video is any picture of its folder */
+bool BackgroundWidget::isAudioItem()
 {
-    /* don't ask */
-    if( var_InheritBool( p_intf, "qt-icon-change" ) && !title.isEmpty() )
+    input_item_t *p_item = THEMIM->currentInputItem();
+    if( !p_item )
+        return false;
+
+    bool b_audio = false, b_video = false;
+    vlc_mutex_lock( &p_item->lock );
+    for( int i = 0; i < p_item->i_es; i++ )
     {
-        int i_pos = title.indexOf( "Ki" /* Bps */ "ll", 0, Qt::CaseInsensitive );
-        if( i_pos != -1 &&
-            i_pos + 5 == title.indexOf( "Bi" /* directional */ "ll",
-                                       i_pos, Qt::CaseInsensitive ) )
-                updateDefaultArt( ":/logo/vlc128-kb.png" );
-        else if( QDate::currentDate().dayOfYear() >= QT_XMAS_JOKE_DAY )
-                updateDefaultArt( ":/logo/vlc128-xmas.png" );
-        else
-                updateDefaultArt( ":/logo/vlc128.png" );
+        if( p_item->es[i]->i_cat == VIDEO_ES )
+            b_video = true;
+        else if( p_item->es[i]->i_cat == AUDIO_ES )
+            b_audio = true;
     }
+    vlc_mutex_unlock( &p_item->lock );
+    if( b_video || b_audio )
+        return !b_video;
+
+    /* still opening: from the file name */
+    static const QStringList audioExtensions =
+        QString( EXTENSIONS_AUDIO ).remove( "*." ).split( ';', QString::SkipEmptyParts );
+    char *psz_uri = input_item_GetURI( p_item );
+    const QString suffix = QFileInfo( QUrl( qfu( psz_uri ) ).path() ).suffix().toLower();
+    free( psz_uri );
+    return !suffix.isEmpty() && audioExtensions.contains( suffix );
 }
 
 void BackgroundWidget::showEvent( QShowEvent * e )
@@ -606,7 +622,7 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
         return;
     }
 
-    if( b_musicMode && THEMIM->getInput() )
+    if( b_musicMode && THEMIM->getInput() && isAudioItem() )
     {
         QPainter painter( this );
         painter.setOpacity( property( "opacity" ).toFloat() );
@@ -614,8 +630,9 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
         return;
     }
 
+    /* The cat, a third of the height (all of it with qt-bgcone-expands) */
     int i_maxwidth, i_maxheight;
-    QPixmap pixmap = QPixmap( pixmapUrl );
+    QPixmap pixmap = QPixmap( defaultArt );
     QPainter painter(this);
 
 #if HAS_QT56
@@ -623,39 +640,23 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
 #else
     qreal dpr = devicePixelRatio();
 #endif
-    pixmap.setDevicePixelRatio( dpr );
 
     i_maxwidth  = __MIN( maximumWidth(), width() ) - MARGIN * 2;
     i_maxheight = __MIN( maximumHeight(), height() ) - MARGIN * 2;
+    if( !b_expandPixmap )
+        i_maxheight = __MIN( i_maxheight, __MAX( height() / 3, 96 ) );
 
     painter.setOpacity( property( "opacity" ).toFloat() );
 
-    if ( height() > MARGIN * 2 )
+    if ( height() > MARGIN * 2 && i_maxwidth > 0 && i_maxheight > 0 && !pixmap.isNull() )
     {
-        /* Scale down the pixmap if the widget is too small */
-        if( pixmap.width() > i_maxwidth || pixmap.height() > i_maxheight )
-        {
-            pixmap = pixmap.scaled( i_maxwidth * dpr, i_maxheight * dpr ,
-                            Qt::KeepAspectRatio, Qt::SmoothTransformation );
-        }
-        else
-        if ( b_expandPixmap &&
-             pixmap.width() < width() && pixmap.height() < height() )
-        {
-            pixmap = pixmap.scaled(
-                    (width() - MARGIN * 2) * dpr,
-                    (height() - MARGIN * 2) * dpr ,
-                    Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        }
-        else if (dpr != 1.0)
-        {
-            pixmap = pixmap.scaled( pixmap.width() * dpr, pixmap.height() * dpr,
-                                    Qt::KeepAspectRatio, Qt::SmoothTransformation );
-        }
+        pixmap = pixmap.scaled( i_maxwidth * dpr, i_maxheight * dpr,
+                                Qt::KeepAspectRatio, Qt::SmoothTransformation );
+        pixmap.setDevicePixelRatio( dpr );
 
         painter.drawPixmap(
-                MARGIN + ( i_maxwidth - ( pixmap.width() / dpr ) ) / 2,
-                MARGIN + ( i_maxheight - ( pixmap.height() / dpr ) ) / 2,
+                ( width() - pixmap.width() / dpr ) / 2,
+                ( height() - pixmap.height() / dpr ) / 2,
                 pixmap);
     }
     QWidget::paintEvent( e );

@@ -50,8 +50,13 @@ private:
     void updateCustomTitleBar();
     void applyCustomMargins( bool b_on );
     void updateTopBarInset();
+    void restoreWindowedPlacement();
     bool b_customTitleBar;
     bool b_marginsApplied;
+    /* Window placement (normal rectangle, maximized) from before fullscreen:
+     * Qt loses the normal rectangle of maximized windows on the round trip */
+    WINDOWPLACEMENT windowedPlacement;
+    bool b_placementSaved;
     int  i_captionHeight; /* native title bar + top border, in pixels */
     int  i_frameWidth;    /* native resize border, in pixels */
 

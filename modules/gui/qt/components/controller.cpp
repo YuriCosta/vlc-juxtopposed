@@ -1090,8 +1090,12 @@ void FullscreenControllerWidget::updateFullwidthGeometry( int number )
 {
     QRect screenGeometry = QGuiApplication::screens()[ number ]->geometry();
     setMinimumWidth( screenGeometry.width() );
-    setGeometry( screenGeometry.x(), screenGeometry.y() + screenGeometry.height() - height(), screenGeometry.width(), height() );
-    adjustSize();
+    /* The height of the laid out bar: before the first show, height() is
+     * still the default one and the bar would end half off the screen */
+    ensurePolished();
+    layout()->activate();
+    const int h = sizeHint().height();
+    setGeometry( screenGeometry.x(), screenGeometry.y() + screenGeometry.height() - h, screenGeometry.width(), h );
 }
 
 void FullscreenControllerWidget::toggleFullwidth()

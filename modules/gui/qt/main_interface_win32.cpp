@@ -94,6 +94,7 @@ MainInterfaceWin32::MainInterfaceWin32( intf_thread_t *_p_intf )
     : MainInterface( _p_intf )
     , b_customTitleBar( false )
     , b_marginsApplied( false )
+    , b_placementSaved( false )
     , i_captionHeight( 0 )
     , i_frameWidth( 0 )
     , himl( NULL )
@@ -176,9 +177,28 @@ void MainInterfaceWin32::applyCustomMargins( bool b_on )
 
 void MainInterfaceWin32::setInterfaceFullScreen( bool fs )
 {
+    if( fs && !( windowState() & Qt::WindowFullScreen ) && windowHandle() )
+    {
+        windowedPlacement.length = sizeof( windowedPlacement );
+        b_placementSaved = GetWindowPlacement( WinId( this ), &windowedPlacement );
+    }
     if( fs )
         applyCustomMargins( false );
     MainInterface::setInterfaceFullScreen( fs );
+}
+
+/* Back from fullscreen: the frame first, then the rectangle and the state the
+ * window had, so that restoring a maximized window gives back its normal size */
+void MainInterfaceWin32::restoreWindowedPlacement()
+{
+    if( !b_placementSaved || ( windowState() & Qt::WindowFullScreen ) )
+        return;
+    b_placementSaved = false;
+    if( windowedPlacement.showCmd != SW_SHOWMAXIMIZED )
+        windowedPlacement.showCmd = SW_SHOWNORMAL;
+    windowedPlacement.flags = 0;
+    SetWindowPlacement( WinId( this ), &windowedPlacement );
+    updateTopBarInset();
 }
 
 void MainInterfaceWin32::updateTopBarInset()
@@ -198,7 +218,10 @@ void MainInterfaceWin32::changeEvent( QEvent *event )
      * (leaving fullscreen may chain a showMaximized()) before changing the
      * frame, or the window gets stuck in between states */
     if( event->type() == QEvent::WindowStateChange )
-        QTimer::singleShot( 0, this, [this]() { updateCustomTitleBar(); } );
+        QTimer::singleShot( 0, this, [this]() {
+            updateCustomTitleBar();
+            restoreWindowedPlacement();
+        } );
 }
 
 MainInterfaceWin32::~MainInterfaceWin32()

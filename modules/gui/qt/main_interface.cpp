@@ -527,15 +527,8 @@ void MainInterface::createMainWidget( QSettings *creationSettings )
     /* */
     stackCentralW = new QVLCStackedWidget( main );
 
-    /* Bg Cone */
-    if ( QDate::currentDate().dayOfYear() >= QT_XMAS_JOKE_DAY
-         && var_InheritBool( p_intf, "qt-icon-change" ) )
-    {
-        bgWidget = new EasterEggBackgroundWidget( p_intf );
-        connect( this, SIGNAL( kc_pressed() ), bgWidget, SLOT( animate() ) );
-    }
-    else
-        bgWidget = new BackgroundWidget( p_intf );
+    /* Background: the cat (redesign, no Christmas cone) */
+    bgWidget = new BackgroundWidget( p_intf );
 
     stackCentralW->addWidget( bgWidget );
     bgWidget->setMusicMode( true );

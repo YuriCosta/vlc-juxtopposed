@@ -202,6 +202,7 @@
         <file alias="set-extensions.svg">pixmaps/redesign/set-extensions.svg</file>
         <file alias="info.svg">pixmaps/redesign/info.svg</file>
         <file alias="edit.svg">pixmaps/redesign/edit.svg</file>
+        <file alias="idle-cat.png">pixmaps/redesign/idle-cat.png</file>
         <file alias="arrow-left.svg">pixmaps/redesign/arrow-left.svg</file>
         <file alias="arrow-right.svg">pixmaps/redesign/arrow-right.svg</file>
         <file alias="lib-more.svg">pixmaps/redesign/lib-more.svg</file>

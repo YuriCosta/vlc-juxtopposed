@@ -496,6 +496,7 @@ libqt_plugin_la_RES = \
 	gui/qt/pixmaps/redesign/set-extensions.svg \
 	gui/qt/pixmaps/redesign/info.svg \
 	gui/qt/pixmaps/redesign/edit.svg \
+	gui/qt/pixmaps/redesign/idle-cat.png \
 	gui/qt/fonts/Inter-Regular.ttf \
 	gui/qt/fonts/Inter-SemiBold.ttf \
 	gui/qt/pixmaps/redesign/arrow-left.svg \

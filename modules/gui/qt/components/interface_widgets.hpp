@@ -133,7 +133,8 @@ protected:
 public slots:
     void toggle(){ isVisible() ? hide() : show(); }
     void updateArt( const QString& );
-    void titleUpdated( const QString& );
+private:
+    bool isAudioItem();
 };
 
 class EasterEggBackgroundWidget : public BackgroundWidget
